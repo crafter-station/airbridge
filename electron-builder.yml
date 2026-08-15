@@ -1,0 +1,22 @@
+appId: dev.airbridge.app
+productName: airbridge
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - package.json
+extraResources:
+  - from: resources
+    to: .
+# Unsigned for v1 by design — see PLAN.md, Q18. macOS needs a right-click > Open on first
+# launch and Windows shows a SmartScreen warning until this is revisited.
+mac:
+  category: public.app-category.utilities
+  target: dmg
+  identity: null
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

@@ -1,0 +1,32 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Finder's chrome, approximated. These get refined against screenshots in M4. */
+  --color-chrome: #f6f6f6;
+  --color-chrome-border: #d8d8d8;
+  --color-sidebar: #ececec;
+  --color-ink: #1d1d1f;
+  --color-ink-muted: #6e6e73;
+  --color-accent: #0a6cff;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-chrome);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  /* Chrome is chrome: text selection and rubber-band scrolling make it feel like a web page. */
+  user-select: none;
+  overscroll-behavior: none;
+}

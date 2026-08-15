@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Node types come along because the preload's type declarations pull in Electron's,
+    // which reference the NodeJS namespace. The renderer itself has no Node access.
+    "types": ["node", "vite/client"]
+  },
+  "include": ["src/renderer/**/*", "src/preload/index.d.ts", "src/shared/**/*"]
+}
