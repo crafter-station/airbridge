@@ -60,7 +60,7 @@ share root.
 Vertical slice first — the risk is in transport and discovery, not CSS.
 
 - [x] **M0 — Scaffold.** electron-vite + React + TS + pnpm, tray/menu bar, builds on both platforms.
-- [ ] **M1 — Server.** Publish a folder, list and stream it over HTTPS, hardcoded trust. Two
+- [x] **M1 — Server.** Publish a folder, list and stream it over HTTPS, hardcoded trust. Two
       instances on Windows, different ports.
 - [ ] **M2 — Discovery + pairing.** mDNS with adapter filtering, approval dialog, UUID+fingerprint
       trust store, Connect-by-IP fallback. *First real Mac smoke test lands here.*
