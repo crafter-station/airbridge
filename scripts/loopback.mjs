@@ -118,7 +118,10 @@ try {
   // Give the host time to bind 45789 so the guest lands on 45790 and exercises the fallback.
   await new Promise((resolve) => setTimeout(resolve, 3000))
 
-  guest = launch('guest', guestData, { AIRBRIDGE_SELFTEST_TARGET: '127.0.0.1:45789' })
+  guest = launch('guest', guestData, {
+    AIRBRIDGE_SELFTEST_TARGET: '127.0.0.1:45789',
+    AIRBRIDGE_COLLISION_POLICY: 'keep-both'
+  })
 
   const { status, detail } = await selfTestResult(guest)
 
@@ -142,6 +145,49 @@ try {
       !String(detail.downloadedTo).endsWith('.airbridge-part') &&
         !existsSync(`${detail.downloadedTo}.airbridge-part`),
       detail.downloadedTo
+    )
+
+    check(
+      'resumed from a partial file instead of restarting',
+      detail.resumed?.identical === true && detail.resumed.finalBytes === expected?.length,
+      JSON.stringify(detail.resumed)
+    )
+
+    check('the whole-share copy finished', detail.copied?.status === 'done', detail.copied?.status)
+    check(
+      'copied every file in the share',
+      detail.copied?.files === Object.keys(FILES).length + 1,
+      `${detail.copied?.files} files`
+    )
+    check(
+      'mirrored the folder structure',
+      existsSync(join(detail.copied.destination, 'nested', 'deep.bin')),
+      detail.copied?.destination
+    )
+    check(
+      'copied nested file contents intact',
+      readFileSync(join(detail.copied.destination, 'nested', 'deep.bin')).equals(
+        Buffer.alloc(2048, 3)
+      )
+    )
+
+    // The second copy hit a collision on every file, answered with Keep Both.
+    check('the colliding copy finished', detail.recopied?.status === 'done', detail.recopied?.status)
+    check(
+      'Keep Both numbered the duplicates Finder-style',
+      detail.afterRecopy?.includes('aaa-first 2.txt') &&
+        detail.afterRecopy?.includes('second 2.txt'),
+      JSON.stringify(detail.afterRecopy)
+    )
+    check(
+      'Keep Both put the number before the extension',
+      !detail.afterRecopy?.some((name) => name.endsWith('.txt 2')),
+      JSON.stringify(detail.afterRecopy)
+    )
+    check(
+      'the originals survived the second copy',
+      readFileSync(join(detail.copied.destination, 'aaa-first.txt'), 'utf8') ===
+        FILES['aaa-first.txt']
     )
   }
 } finally {

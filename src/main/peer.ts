@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs'
-import { mkdir, rename, rm, stat } from 'node:fs/promises'
+import { mkdir, rename, rm, stat, utimes } from 'node:fs/promises'
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { basename, join } from 'node:path'
@@ -36,6 +36,7 @@ interface RequestOptions {
   method?: string
   headers?: Record<string, string>
   body?: unknown
+  signal?: AbortSignal
 }
 
 async function peerRequest(
@@ -98,6 +99,14 @@ async function peerRequest(
         }
       })
     })
+
+    if (options.signal) {
+      const abort = (): void => {
+        request.destroy(new Error('Transfer cancelled'))
+      }
+      if (options.signal.aborted) abort()
+      else options.signal.addEventListener('abort', abort, { once: true })
+    }
 
     request.on('error', fail)
     request.on('response', (response) =>
@@ -192,19 +201,29 @@ export async function listPeerDirectory(
   return entries
 }
 
+export interface DownloadOptions {
+  /** Overrides the name taken from the remote path — used by Keep Both. */
+  fileName?: string
+  /** Continue from whatever is already in the `.part` file rather than starting over. */
+  resume?: boolean
+  signal?: AbortSignal
+  /** Called with the size of each chunk as it arrives, not a running total. */
+  onProgress?: (chunkBytes: number) => void
+}
+
 /**
  * Stream one remote file to disk.
  *
- * Writes to a `.airbridge-part` sibling and renames on success, so an interrupted transfer
- * leaves an obviously-partial file rather than a plausible-looking truncated one. M3 layers
- * the queue, resume and collision handling on top of this.
+ * Writes to a `.airbridge-part` sibling and renames on success. The rename is the commit: an
+ * interrupted transfer leaves an obviously-partial file rather than a plausible-looking
+ * truncated one that a person would mistake for the real thing.
  */
 export async function downloadFile(
   peer: PeerAddress,
   shareId: string,
   remotePath: string,
   destinationDirectory: string,
-  options: { fileName?: string; resume?: boolean } = {}
+  options: DownloadOptions = {}
 ): Promise<DownloadResult> {
   await mkdir(destinationDirectory, { recursive: true })
 
@@ -212,11 +231,16 @@ export async function downloadFile(
   const finalPath = join(destinationDirectory, fileName)
   const partPath = `${finalPath}${PART_SUFFIX}`
 
-  const alreadyHave = options.resume ? await stat(partPath).then((s) => s.size).catch(() => 0) : 0
+  const alreadyHave = options.resume
+    ? await stat(partPath)
+        .then((stats) => stats.size)
+        .catch(() => 0)
+    : 0
 
   const response = await peerRequest(peer, {
     path: `/shares/${encodeURIComponent(shareId)}/file${query(remotePath)}`,
-    headers: alreadyHave > 0 ? { range: `bytes=${alreadyHave}-` } : undefined
+    headers: alreadyHave > 0 ? { range: `bytes=${alreadyHave}-` } : undefined,
+    signal: options.signal
   })
 
   if (response.status >= 400) {
@@ -228,8 +252,26 @@ export async function downloadFile(
   const appending = alreadyHave > 0 && response.status === 206
   if (alreadyHave > 0 && !appending) await rm(partPath, { force: true })
 
-  await pipeline(response.body, createWriteStream(partPath, { flags: appending ? 'a' : 'w' }))
+  if (options.onProgress) {
+    if (appending) options.onProgress(alreadyHave)
+    response.body.on('data', (chunk: Buffer) => options.onProgress?.(chunk.length))
+  }
+
+  await pipeline(response.body, createWriteStream(partPath, { flags: appending ? 'a' : 'w' }), {
+    signal: options.signal
+  })
+
   await rename(partPath, finalPath)
+
+  // Carry the original timestamp across, the way a copy in Finder does. Failure here is
+  // cosmetic — the bytes are already committed — so it must not fail the transfer.
+  const lastModified = response.headers['last-modified']
+  if (lastModified) {
+    const modified = new Date(lastModified)
+    if (!Number.isNaN(modified.getTime())) {
+      await utimes(finalPath, modified, modified).catch(() => {})
+    }
+  }
 
   return { path: finalPath, bytes: (await stat(finalPath)).size }
 }

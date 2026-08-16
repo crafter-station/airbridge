@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import type { DirEntry, KnownDevice, PublicShare, ServerStatus, Share } from '@shared/types'
+import type {
+  DirEntry,
+  KnownDevice,
+  PublicShare,
+  ServerStatus,
+  Share,
+  TransferJob
+} from '@shared/types'
 
 /**
- * M2 development console.
+ * M3 development console.
  *
  * Deliberately plain: its job is to exercise publish → discover → pair → browse → copy end
  * to end so the transport can be trusted before the Finder shell is built on top of it in
@@ -111,6 +118,7 @@ function RemotePanel(): React.JSX.Element {
   const [openShare, setOpenShare] = useState<PublicShare | null>(null)
   const [path, setPath] = useState('')
   const [entries, setEntries] = useState<DirEntry[]>([])
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -156,15 +164,22 @@ function RemotePanel(): React.JSX.Element {
       setPath(nextPath)
     })
 
-  const download = (entry: DirEntry): Promise<void> =>
+  const copy = (entries: DirEntry[]): Promise<void> =>
     run(async () => {
       if (!openDevice || !openShare) return
-      const result = await window.airbridge.peer.download(
+      const job = await window.airbridge.transfers.copy(
         openDevice.deviceId,
         openShare.id,
-        joinPath(path, entry.name)
+        openShare.name,
+        entries.map((entry) => ({
+          name: entry.name,
+          kind: entry.kind,
+          path: joinPath(path, entry.name),
+          size: entry.size
+        }))
       )
-      setMessage(`Saved ${formatBytes(result.bytes)} to ${result.path}`)
+      setSelected(new Set())
+      if (job) setMessage(`Copying to ${job.destination}`)
     })
 
   return (
@@ -253,23 +268,38 @@ function RemotePanel(): React.JSX.Element {
 
       {openShare && (
         <>
-          <Breadcrumb
-            share={openShare}
-            path={path}
-            onNavigate={(next) => void browse(openShare, next)}
-          />
+          <div className="flex items-center justify-between">
+            <Breadcrumb
+              share={openShare}
+              path={path}
+              onNavigate={(next) => void browse(openShare, next)}
+            />
+            <Button
+              onClick={() => void copy(entries.filter((entry) => selected.has(entry.name)))}
+              disabled={busy || selected.size === 0}
+            >
+              Copy {selected.size > 0 ? `${selected.size} ` : ''}to…
+            </Button>
+          </div>
+
           <ul className="flex flex-col">
             {entries.map((entry) => (
-              <li key={entry.name}>
+              <li key={entry.name} className="flex items-center gap-2 px-2 py-1 hover:bg-(--color-sidebar)">
+                <input
+                  type="checkbox"
+                  checked={selected.has(entry.name)}
+                  onChange={(event) => {
+                    const next = new Set(selected)
+                    if (event.target.checked) next.add(entry.name)
+                    else next.delete(entry.name)
+                    setSelected(next)
+                  }}
+                />
                 <button
                   type="button"
-                  disabled={busy}
-                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-(--color-sidebar)"
-                  onClick={() =>
-                    entry.kind === 'directory'
-                      ? void browse(openShare, joinPath(path, entry.name))
-                      : void download(entry)
-                  }
+                  disabled={busy || entry.kind !== 'directory'}
+                  className="flex flex-1 items-center gap-2 text-left disabled:cursor-default"
+                  onClick={() => void browse(openShare, joinPath(path, entry.name))}
                 >
                   <span className="w-4 text-(--color-ink-muted)">
                     {entry.kind === 'directory' ? '▸' : '·'}
@@ -289,6 +319,80 @@ function RemotePanel(): React.JSX.Element {
           </ul>
         </>
       )}
+
+      <Transfers />
+    </section>
+  )
+}
+
+function Transfers(): React.JSX.Element | null {
+  const [jobs, setJobs] = useState<TransferJob[]>([])
+
+  useEffect(() => {
+    void window.airbridge.transfers.list().then(setJobs)
+    return window.airbridge.transfers.onChanged(setJobs)
+  }, [])
+
+  if (jobs.length === 0) return null
+
+  return (
+    <section className="flex flex-col gap-2 border-t border-(--color-chrome-border) pt-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold">Transfers</h3>
+        <Button onClick={() => void window.airbridge.transfers.clear()}>Clear finished</Button>
+      </div>
+
+      <ul className="flex flex-col gap-2">
+        {jobs.map((job) => {
+          const fraction = job.totalBytes > 0 ? job.transferredBytes / job.totalBytes : 0
+          const running = job.status === 'scanning' || job.status === 'transferring'
+
+          return (
+            <li
+              key={job.id}
+              className="flex flex-col gap-1 rounded-md border border-(--color-chrome-border) bg-white px-3 py-2"
+            >
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {job.shareName} → {job.destination}
+                </span>
+                {running ? (
+                  <Button onClick={() => void window.airbridge.transfers.cancel(job.id)}>
+                    Cancel
+                  </Button>
+                ) : (
+                  <Button onClick={() => void window.airbridge.transfers.reveal(job.destination)}>
+                    Reveal
+                  </Button>
+                )}
+              </div>
+
+              <div className="h-1 overflow-hidden rounded-full bg-(--color-sidebar)">
+                <div
+                  className="h-full bg-(--color-accent) transition-[width] duration-200"
+                  style={{ width: `${Math.round(fraction * 100)}%` }}
+                />
+              </div>
+
+              <div className="flex justify-between text-xs text-(--color-ink-muted)">
+                <span className="truncate">
+                  {job.status === 'scanning' && 'Scanning…'}
+                  {job.status === 'transferring' && (job.currentFile ?? 'Copying…')}
+                  {job.status === 'done' &&
+                    `Copied ${job.completedFiles} ${job.completedFiles === 1 ? 'file' : 'files'}` +
+                      (job.skippedFiles > 0 ? `, skipped ${job.skippedFiles}` : '')}
+                  {job.status === 'cancelled' && 'Cancelled'}
+                  {job.status === 'failed' && job.error}
+                </span>
+                <span className="shrink-0">
+                  {formatBytes(job.transferredBytes)}
+                  {job.totalBytes > 0 && ` / ${formatBytes(job.totalBytes)}`}
+                </span>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
     </section>
   )
 }

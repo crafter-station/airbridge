@@ -70,7 +70,7 @@ Vertical slice first — the risk is in transport and discovery, not CSS.
       instances on Windows, different ports.
 - [x] **M2 — Discovery + pairing.** mDNS with adapter filtering, approval dialog, UUID+fingerprint
       trust store, Connect-by-IP fallback. *First real Mac smoke test lands here.*
-- [ ] **M3 — Transfers.** Recursive folder copy, `.part` + atomic rename, Range resume, collisions,
+- [x] **M3 — Transfers.** Recursive folder copy, `.part` + atomic rename, Range resume, collisions,
       progress.
 - [ ] **M4 — Finder UI.** Sidebar, List/Icon views, toolbar, local pane drawer, cross-pane drag.
 - [ ] **M5 — Live.** chokidar → WebSocket, unavailable-share handling.

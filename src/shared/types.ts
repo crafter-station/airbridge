@@ -128,3 +128,40 @@ export interface DownloadResult {
   path: string
   bytes: number
 }
+
+/** One thing the user asked to copy. Folders expand to their contents while the job runs. */
+export interface TransferItem {
+  name: string
+  kind: EntryKind
+  /** Path relative to the share root. */
+  path: string
+  /** Known for files, absent for folders until the job walks them. */
+  size?: number
+}
+
+export type TransferStatus =
+  /** Walking the remote tree to find out how much work there is. */
+  | 'scanning'
+  | 'transferring'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
+
+export interface TransferJob {
+  id: string
+  deviceId: string
+  deviceName: string
+  shareName: string
+  destination: string
+  status: TransferStatus
+  /** Zero until scanning finishes, so progress is honest rather than optimistic. */
+  totalBytes: number
+  transferredBytes: number
+  totalFiles: number
+  completedFiles: number
+  skippedFiles: number
+  currentFile: string | null
+  error: string | null
+  startedAt: number
+  finishedAt: number | null
+}

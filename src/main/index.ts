@@ -1,13 +1,14 @@
-import { app, dialog, ipcMain } from 'electron'
+import { app, dialog, ipcMain, shell } from 'electron'
 
 import { EVENTS, IPC } from '@shared/ipc'
 import type {
   DirEntry,
-  DownloadResult,
   KnownDevice,
   PeerShares,
   ServerStatus,
   Share,
+  TransferItem,
+  TransferJob,
   TrustedDevice
 } from '@shared/types'
 import { getCertificate } from './cert'
@@ -16,7 +17,8 @@ import { onPeersChanged, startDiscovery, stopDiscovery } from './discovery'
 import { broadcast } from './events'
 import { getAppInfo } from './identity'
 import { localAddresses } from './network'
-import { downloadFile, listPeerDirectory, listPeerShares } from './peer'
+import { listPeerDirectory, listPeerShares } from './peer'
+import { cancelJob, clearFinishedJobs, listJobs, startCopy } from './transfers'
 import { serverPort, startServer, stopServer } from './server'
 import { addShare, listShares, removeShare, setShareWritable } from './shares'
 import { createTray } from './tray'
@@ -103,13 +105,53 @@ function registerHandlers(): void {
       listPeerDirectory(resolvePeer(deviceId), shareId, path)
   )
 
+  ipcMain.handle(IPC.transfersList, (): TransferJob[] => listJobs())
+
   ipcMain.handle(
-    IPC.peerDownload,
-    (_event, deviceId: string, shareId: string, path: string): Promise<DownloadResult> =>
-      downloadFile(resolvePeer(deviceId), shareId, path, app.getPath('downloads'), {
-        resume: true
+    IPC.transfersCopy,
+    async (
+      _event,
+      deviceId: string,
+      shareId: string,
+      shareName: string,
+      items: TransferItem[],
+      destination?: string
+    ): Promise<TransferJob | null> => {
+      // A destination given by the caller comes from the local pane (M4). Without one, fall
+      // back to asking, which is what the M3 console does.
+      let target = destination
+      if (!target) {
+        const picked = await dialog.showOpenDialog({
+          title: 'Copy to',
+          buttonLabel: 'Copy Here',
+          properties: ['openDirectory', 'createDirectory']
+        })
+        if (picked.canceled || !picked.filePaths[0]) return null
+        target = picked.filePaths[0]
+      }
+
+      const device = knownDevices().find((known) => known.deviceId === deviceId)
+
+      return startCopy({
+        peer: resolvePeer(deviceId),
+        deviceId,
+        deviceName: device?.deviceName ?? deviceId,
+        shareId,
+        shareName,
+        items,
+        destination: target
       })
+    }
   )
+
+  ipcMain.handle(IPC.transfersCancel, (_event, id: string): void => cancelJob(id))
+
+  ipcMain.handle(IPC.transfersClear, (): TransferJob[] => {
+    clearFinishedJobs()
+    return listJobs()
+  })
+
+  ipcMain.handle(IPC.transfersReveal, (_event, path: string): void => shell.showItemInFolder(path))
 }
 
 if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {

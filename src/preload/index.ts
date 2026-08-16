@@ -4,11 +4,12 @@ import { EVENTS, IPC } from '@shared/ipc'
 import type {
   AppInfo,
   DirEntry,
-  DownloadResult,
   KnownDevice,
   PeerShares,
   ServerStatus,
   Share,
+  TransferItem,
+  TransferJob,
   TrustedDevice
 } from '@shared/types'
 
@@ -52,9 +53,23 @@ const api = {
   peer: {
     shares: (deviceId: string): Promise<PeerShares> => ipcRenderer.invoke(IPC.peerShares, deviceId),
     list: (deviceId: string, shareId: string, path: string): Promise<DirEntry[]> =>
-      ipcRenderer.invoke(IPC.peerList, deviceId, shareId, path),
-    download: (deviceId: string, shareId: string, path: string): Promise<DownloadResult> =>
-      ipcRenderer.invoke(IPC.peerDownload, deviceId, shareId, path)
+      ipcRenderer.invoke(IPC.peerList, deviceId, shareId, path)
+  },
+
+  transfers: {
+    list: (): Promise<TransferJob[]> => ipcRenderer.invoke(IPC.transfersList),
+    copy: (
+      deviceId: string,
+      shareId: string,
+      shareName: string,
+      items: TransferItem[],
+      destination?: string
+    ): Promise<TransferJob | null> =>
+      ipcRenderer.invoke(IPC.transfersCopy, deviceId, shareId, shareName, items, destination),
+    cancel: (id: string): Promise<void> => ipcRenderer.invoke(IPC.transfersCancel, id),
+    clear: (): Promise<TransferJob[]> => ipcRenderer.invoke(IPC.transfersClear),
+    reveal: (path: string): Promise<void> => ipcRenderer.invoke(IPC.transfersReveal, path),
+    onChanged: subscribe<TransferJob[]>(EVENTS.transfers)
   }
 }
 
