@@ -127,6 +127,22 @@ export interface PairResponse {
   token: string
 }
 
+/**
+ * What comes down the `/events` socket.
+ *
+ * Notifications only — never data. The peer re-reads whatever it is looking at, which keeps
+ * this from becoming a second, subtly different way to list a directory.
+ */
+export type ShareEvent =
+  | { type: 'share-changed'; shareId: string }
+  | { type: 'shares-changed' }
+
+/** The same thing, tagged with which device it came from, on its way to the renderer. */
+export interface PeerEvent {
+  deviceId: string
+  event: ShareEvent
+}
+
 /** A device in the sidebar: discovered, trusted, or both. */
 export interface KnownDevice {
   deviceId: string

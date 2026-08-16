@@ -84,23 +84,36 @@ function launch(name, dataDirectory, extraEnv) {
   return child
 }
 
-/** Resolve with the parsed detail of the first SELFTEST_ line the guest prints. */
-function selfTestResult(child, timeoutMs = 90_000) {
+/**
+ * Resolve with the guest's final SELFTEST_OK / SELFTEST_FAIL.
+ *
+ * `onMarker` fires for intermediate lines like SELFTEST_WATCHING, which is how the harness
+ * knows when to make a change the guest is supposed to notice.
+ */
+function selfTestResult(child, onMarker = () => {}, timeoutMs = 120_000) {
   return new Promise((resolve, reject) => {
     let buffered = ''
+    const seen = new Set()
 
-    const timer = setTimeout(() => reject(new Error('Timed out waiting for the self test')), timeoutMs)
-
-    const finish = (value) => {
-      clearTimeout(timer)
-      resolve(value)
-    }
+    const timer = setTimeout(
+      () => reject(new Error('Timed out waiting for the self test')),
+      timeoutMs
+    )
 
     child.stdout.on('data', (chunk) => {
       buffered += chunk
+
       for (const line of buffered.split('\n')) {
-        const match = /^(SELFTEST_OK|SELFTEST_FAIL) (.*)$/.exec(line.trim())
-        if (match) finish({ status: match[1], detail: JSON.parse(match[2]) })
+        const match = /^(SELFTEST_[A-Z]+) (.*)$/.exec(line.trim())
+        if (!match || seen.has(line)) continue
+        seen.add(line)
+
+        if (match[1] === 'SELFTEST_OK' || match[1] === 'SELFTEST_FAIL') {
+          clearTimeout(timer)
+          resolve({ status: match[1], detail: JSON.parse(match[2]) })
+        } else {
+          onMarker(match[1])
+        }
       }
     })
 
@@ -125,7 +138,13 @@ try {
     AIRBRIDGE_COLLISION_POLICY: 'keep-both'
   })
 
-  const { status, detail } = await selfTestResult(guest)
+  const { status, detail } = await selfTestResult(guest, (marker) => {
+    // The guest's event socket is listening; give it something to notice. Written only now,
+    // so a pass cannot come from a change that happened before anyone was watching.
+    if (marker === 'SELFTEST_WATCHING') {
+      writeFileSync(join(fixture, 'appeared-later.txt'), 'written while the guest was watching')
+    }
+  })
 
   check('the guest completed a full round trip', status === 'SELFTEST_OK', detail.error)
 
@@ -191,6 +210,8 @@ try {
       readFileSync(join(detail.copied.destination, 'aaa-first.txt'), 'utf8') ===
         FILES['aaa-first.txt']
     )
+
+    check('a change on the host reached the guest unprompted', detail.liveEvent === true)
   }
 } finally {
   guest?.kill()

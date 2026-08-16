@@ -31,7 +31,9 @@ export const IPC = {
 export const EVENTS = {
   devices: 'event:devices',
   shares: 'event:shares',
-  transfers: 'event:transfers'
+  transfers: 'event:transfers',
+  /** Something changed on a peer; the renderer re-reads what it is showing. */
+  peer: 'event:peer'
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

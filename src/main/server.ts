@@ -1,16 +1,18 @@
+import websocket from '@fastify/websocket'
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify'
 import { createReadStream } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { TLSSocket } from 'node:tls'
 
-import type { DirEntry, PairRequest } from '@shared/types'
+import type { DirEntry, PairRequest, ShareEvent } from '@shared/types'
 import { getCertificate } from './cert'
 import { getDeviceId, getDeviceName } from './identity'
 import { isRealPathInside, resolveInside } from './paths'
 import { handlePairRequest, PairingError } from './pairing'
 import { getShare, listPublicShares } from './shares'
 import { findByInboundToken, rememberAddress } from './trust'
+import { onShareAvailabilityChanged, onShareContentChanged } from './watcher'
 
 /** Fixed so a person can type it, with room to climb when it is taken — which is exactly
  *  what happens when a second instance is started for loopback testing. */
@@ -139,6 +141,8 @@ function buildServer(certificate: { key: string; cert: string }): FastifyInstanc
     }
   })
 
+  void server.register(websocket)
+
   void server.register(async (authenticated) => {
     authenticated.addHook('onRequest', async (request, reply) => {
       const header = request.headers.authorization ?? ''
@@ -164,6 +168,31 @@ function buildServer(certificate: { key: string; cert: string }): FastifyInstanc
     }))
 
     authenticated.get('/shares', async () => ({ shares: listPublicShares() }))
+
+    /**
+     * Change notifications, so a peer's window updates without anyone refreshing.
+     *
+     * The socket carries no data of its own — only "something under this share moved" — and
+     * the peer re-reads whatever it happens to be looking at. That keeps this endpoint from
+     * becoming a second, subtly different way to read a directory.
+     */
+    authenticated.get('/events', { websocket: true }, (socket) => {
+      const send = (payload: ShareEvent): void => {
+        if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(payload))
+      }
+
+      const unsubscribeContent = onShareContentChanged((shareId) =>
+        send({ type: 'share-changed', shareId })
+      )
+      const unsubscribeAvailability = onShareAvailabilityChanged(() =>
+        send({ type: 'shares-changed' })
+      )
+
+      socket.on('close', () => {
+        unsubscribeContent()
+        unsubscribeAvailability()
+      })
+    })
 
     authenticated.get<{ Params: ShareParams; Querystring: PathQuery }>(
       '/shares/:id/list',

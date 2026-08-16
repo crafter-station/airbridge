@@ -21,7 +21,9 @@ import { ensureIdentity, getAppInfo } from './identity'
 import { listLocal, localPlaces } from './local'
 import { localAddresses } from './network'
 import { listPeerDirectory, listPeerShares } from './peer'
+import { startPeerEvents, stopPeerEvents, syncConnections } from './peerEvents'
 import { cancelJob, clearFinishedJobs, listJobs, startCopy } from './transfers'
+import { onShareAvailabilityChanged, refreshWatchers, startWatching, stopWatching } from './watcher'
 import { serverPort, startServer, stopServer } from './server'
 import { addShare, listShares, removeShare, setShareWritable } from './shares'
 import { createTray } from './tray'
@@ -43,6 +45,9 @@ const allowMultipleInstances = process.env['AIRBRIDGE_ALLOW_MULTI'] === '1'
 
 function announceShares(): Share[] {
   const shares = listShares()
+  // Watchers follow the share list: adding a folder should start watching it immediately,
+  // not at the next availability sweep.
+  refreshWatchers()
   broadcast(EVENTS.shares, shares)
   return shares
 }
@@ -87,13 +92,20 @@ function registerHandlers(): void {
 
   ipcMain.handle(IPC.devicesList, (): KnownDevice[] => knownDevices())
 
+  // Pairing and unpairing both change which peers we should hold an event socket to. Wired
+  // here rather than inside devices.ts, which peerEvents.ts already depends on.
   ipcMain.handle(
     IPC.devicesPair,
-    (_event, host: string, port: number): Promise<TrustedDevice> => pairWith(host, port)
+    async (_event, host: string, port: number): Promise<TrustedDevice> => {
+      const device = await pairWith(host, port)
+      syncConnections()
+      return device
+    }
   )
 
   ipcMain.handle(IPC.devicesUnpair, (_event, deviceId: string): KnownDevice[] => {
     unpair(deviceId)
+    syncConnections()
     return knownDevices()
   })
 
@@ -178,8 +190,16 @@ if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {
     // Peers seeded by hand are reachable through their remembered address without it.
     if (process.env['AIRBRIDGE_NO_DISCOVERY'] !== '1') {
       await startDiscovery(port)
-      onPeersChanged(() => notifyDevicesChanged())
+      onPeersChanged(() => {
+        notifyDevicesChanged()
+        // A device coming back online is the moment its event socket can be re-established.
+        syncConnections()
+      })
     }
+
+    startWatching()
+    onShareAvailabilityChanged(() => announceShares())
+    startPeerEvents()
 
     createTray()
 
@@ -203,6 +223,9 @@ if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {
 
   app.on('before-quit', () => {
     markQuitting()
-    void stopDiscovery().then(() => stopServer())
+    stopPeerEvents()
+    void stopWatching()
+      .then(() => stopDiscovery())
+      .then(() => stopServer())
   })
 }

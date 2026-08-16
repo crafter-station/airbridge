@@ -5,7 +5,10 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // chokidar ships ESM only, and the main bundle is CommonJS because that is what Electron
+    // preloads need. It is pure JavaScript, so Rollup can convert it on the way in — the
+    // alternative is pinning an older major.
+    plugins: [externalizeDepsPlugin({ exclude: ['chokidar'] })],
     resolve: {
       alias: { '@shared': resolve(__dirname, 'src/shared') }
     },

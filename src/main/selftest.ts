@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { DirEntry, TransferJob } from '@shared/types'
 import { pairWith, resolvePeer } from './devices'
 import { downloadFile, listPeerDirectory, listPeerShares, PART_SUFFIX } from './peer'
+import { onPeerEvent, startPeerEvents } from './peerEvents'
 import { listJobs, startCopy } from './transfers'
 
 /**
@@ -55,7 +56,10 @@ export async function runSelfTest(target: string): Promise<void> {
       destination
     )
 
+    const liveEvent = await watchForChange()
+
     report('SELFTEST_OK', {
+      liveEvent,
       pairedWith: device.deviceName,
       deviceId: device.deviceId,
       shareCount: shares.length,
@@ -73,6 +77,36 @@ export async function runSelfTest(target: string): Promise<void> {
   } catch (cause) {
     report('SELFTEST_FAIL', { error: cause instanceof Error ? cause.message : String(cause) })
   }
+}
+
+/**
+ * Prove that a change on the peer arrives without anyone asking.
+ *
+ * Announces readiness on stdout, because the harness has to create the change *after* the
+ * socket is listening — a file written before then would be indistinguishable from the
+ * watcher having missed it.
+ */
+async function watchForChange(timeoutMs = 20_000): Promise<boolean> {
+  startPeerEvents()
+
+  // Give the socket a moment to finish its handshake before inviting the change.
+  await new Promise((resolve) => setTimeout(resolve, 1500))
+
+  const arrived = new Promise<boolean>((resolve) => {
+    const stop = onPeerEvent((peerEvent) => {
+      if (peerEvent.event.type !== 'share-changed') return
+      stop()
+      resolve(true)
+    })
+
+    setTimeout(() => {
+      stop()
+      resolve(false)
+    }, timeoutMs)
+  })
+
+  report('SELFTEST_WATCHING', {})
+  return arrived
 }
 
 /**

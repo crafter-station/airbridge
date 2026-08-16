@@ -55,6 +55,49 @@ export function useServerStatus(): UseQueryResult<ServerStatus> {
   return useQuery({ queryKey: ['server'], queryFn: () => window.airbridge.serverStatus() })
 }
 
+/**
+ * Re-read whatever is on screen when a peer says something moved.
+ *
+ * The event carries no data, only which device and which share — so this invalidates the
+ * cached listings and lets the normal query path fetch. One subscription for the whole app,
+ * mounted once at the root.
+ */
+export function usePeerEvents(): void {
+  const client = useQueryClient()
+
+  useEffect(
+    () =>
+      window.airbridge.peer.onChanged(({ deviceId, event }) => {
+        if (event.type === 'shares-changed') {
+          void client.invalidateQueries({ queryKey: ['peer-shares', deviceId] })
+          return
+        }
+
+        void client.invalidateQueries({
+          predicate: (query) => {
+            const [name, device, share] = query.queryKey as [string, string, string]
+            return name === 'peer-dir' && device === deviceId && share === event.shareId
+          }
+        })
+      }),
+    [client]
+  )
+}
+
+/** Our own published folders can change under us too — the watcher notices, and the local
+ *  views that are showing them should follow. */
+export function useLocalRefresh(): void {
+  const client = useQueryClient()
+
+  useEffect(
+    () =>
+      window.airbridge.shares.onChanged(() => {
+        void client.invalidateQueries({ queryKey: ['local-dir'] })
+      }),
+    [client]
+  )
+}
+
 export function usePeerShares(deviceId: string | null): UseQueryResult<PublicShare[]> {
   return useQuery({
     queryKey: ['peer-shares', deviceId],

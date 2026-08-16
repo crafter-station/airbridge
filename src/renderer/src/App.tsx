@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Browser } from './components/Browser'
 import { LocalPane } from './components/LocalPane'
 import { Sidebar } from './components/Sidebar'
+import { useLocalRefresh, usePeerEvents } from './queries'
 import { StatusBar } from './components/StatusBar'
 import { Toolbar } from './components/Toolbar'
 import { useUi } from './store'
@@ -29,6 +30,8 @@ function Shell(): React.JSX.Element {
   const [itemCount, setItemCount] = useState<number | null>(null)
 
   useKeyboardShortcuts()
+  usePeerEvents()
+  useLocalRefresh()
 
   return (
     <div className="flex h-full flex-col">

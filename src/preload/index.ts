@@ -7,6 +7,7 @@ import type {
   KnownDevice,
   LocalListing,
   LocalPlace,
+  PeerEvent,
   PeerShares,
   ServerStatus,
   Share,
@@ -55,7 +56,8 @@ const api = {
   peer: {
     shares: (deviceId: string): Promise<PeerShares> => ipcRenderer.invoke(IPC.peerShares, deviceId),
     list: (deviceId: string, shareId: string, path: string): Promise<DirEntry[]> =>
-      ipcRenderer.invoke(IPC.peerList, deviceId, shareId, path)
+      ipcRenderer.invoke(IPC.peerList, deviceId, shareId, path),
+    onChanged: subscribe<PeerEvent>(EVENTS.peer)
   },
 
   local: {
