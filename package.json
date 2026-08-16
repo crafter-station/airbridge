@@ -4,6 +4,11 @@
   "description": "Share folders between Windows and macOS over your LAN",
   "private": true,
   "license": "MIT",
+  "author": "Ignacio Rueda",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crafter-station/airbridge.git"
+  },
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -16,6 +21,8 @@
     "smoke": "node scripts/smoke.mjs",
     "loopback": "node scripts/loopback.mjs",
     "demo": "node scripts/demo.mjs",
+    "package": "pnpm build && electron-builder",
+    "package:dir": "pnpm build && electron-builder --dir",
     "test": "pnpm smoke && pnpm loopback"
   },
   "devDependencies": {

@@ -19,10 +19,11 @@ import { onPeersChanged, startDiscovery, stopDiscovery } from './discovery'
 import { broadcast } from './events'
 import { ensureIdentity, getAppInfo } from './identity'
 import { listLocal, localPlaces } from './local'
+import { showDeviceMenu, showShareMenu } from './menus'
 import { localAddresses } from './network'
 import { listPeerDirectory, listPeerShares } from './peer'
 import { startPeerEvents, stopPeerEvents, syncConnections } from './peerEvents'
-import { cancelJob, clearFinishedJobs, listJobs, startCopy } from './transfers'
+import { cancelJob, clearFinishedJobs, listJobs, startCopy, startUpload } from './transfers'
 import { onShareAvailabilityChanged, refreshWatchers, startWatching, stopWatching } from './watcher'
 import { serverPort, startServer, stopServer } from './server'
 import { addShare, listShares, removeShare, setShareWritable } from './shares'
@@ -90,7 +91,18 @@ function registerHandlers(): void {
     return announceShares()
   })
 
+  ipcMain.handle(IPC.sharesMenu, (_event, id: string): void => {
+    showShareMenu(id, () => announceShares())
+  })
+
   ipcMain.handle(IPC.devicesList, (): KnownDevice[] => knownDevices())
+
+  ipcMain.handle(IPC.devicesMenu, (_event, deviceId: string, deviceName: string): void => {
+    showDeviceMenu(deviceName, () => {
+      unpair(deviceId)
+      syncConnections()
+    })
+  })
 
   // Pairing and unpairing both change which peers we should hold an event socket to. Wired
   // here rather than inside devices.ts, which peerEvents.ts already depends on.
@@ -159,6 +171,30 @@ function registerHandlers(): void {
         shareName,
         items,
         destination: target
+      })
+    }
+  )
+
+  ipcMain.handle(
+    IPC.transfersUpload,
+    (
+      _event,
+      deviceId: string,
+      shareId: string,
+      shareName: string,
+      localPaths: string[],
+      remoteDirectory: string
+    ): TransferJob => {
+      const device = knownDevices().find((known) => known.deviceId === deviceId)
+
+      return startUpload({
+        peer: resolvePeer(deviceId),
+        deviceId,
+        deviceName: device?.deviceName ?? deviceId,
+        shareId,
+        shareName,
+        localPaths,
+        remoteDirectory
       })
     }
   )

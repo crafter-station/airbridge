@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import type { TransferItem } from '@shared/types'
 import { useLocalDirectory, useLocalPlaces } from '../queries'
 import { useUi } from '../store'
-import { ChevronIcon, FolderIcon, PlaceIcon } from './Icons'
+import { ChevronIcon, FileIcon, FolderIcon, PlaceIcon } from './Icons'
 
 /** What a drag out of the remote pane carries. Not a real file — the bytes are still on the
  *  other machine — so it is a copy instruction rather than a payload. */
@@ -15,6 +15,13 @@ export interface RemoteDrag {
 }
 
 export const DRAG_MIME = 'application/x-airbridge-items'
+
+/** The other direction: local paths on their way into a writable share. */
+export const LOCAL_DRAG_MIME = 'application/x-airbridge-local'
+
+export interface LocalDrag {
+  paths: string[]
+}
 
 /**
  * The destination half of the window.
@@ -50,9 +57,9 @@ export function LocalPane(): React.JSX.Element {
     )
   }
 
-  const folders = (listing?.entries ?? []).filter(
-    (entry) => entry.kind === 'directory' && !entry.name.startsWith('.')
-  )
+  // Folders are drop targets; files are here so they can be dragged the other way, into a
+  // writable share. Dotfiles stay hidden, as in the main pane.
+  const entries = (listing?.entries ?? []).filter((entry) => !entry.name.startsWith('.'))
 
   return (
     <aside className="flex w-80 shrink-0 flex-col border-l border-(--color-chrome-border) bg-(--color-chrome)">
@@ -121,30 +128,41 @@ export function LocalPane(): React.JSX.Element {
       >
         {isLoading && <p className="px-2 py-1 text-xs text-(--color-ink-muted)">Loading…</p>}
 
-        {!isLoading && folders.length === 0 && (
+        {!isLoading && entries.length === 0 && (
           <p className="px-2 py-3 text-center text-xs text-(--color-ink-muted)">
             Drop here to copy into this folder.
           </p>
         )}
 
         <ul className="flex flex-col gap-px">
-          {folders.map((entry) => {
+          {entries.map((entry) => {
             const path = joinLocal(panePath ?? '', entry.name)
+            const isFolder = entry.kind === 'directory'
 
             return (
               <li key={entry.name}>
                 <button
                   type="button"
-                  data-drop="folder"
+                  data-drop={isFolder ? 'folder' : undefined}
                   data-path={path}
-                  onDoubleClick={() => setPanePath(path)}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(
+                      LOCAL_DRAG_MIME,
+                      JSON.stringify({ paths: [path] } satisfies LocalDrag)
+                    )
+                    event.dataTransfer.effectAllowed = 'copy'
+                  }}
+                  onDoubleClick={() => isFolder && setPanePath(path)}
                   onDragOver={(event) => {
+                    if (!isFolder) return
                     event.preventDefault()
                     event.stopPropagation()
                     setDropTarget(path)
                   }}
                   onDragLeave={() => setDropTarget(null)}
                   onDrop={(event) => {
+                    if (!isFolder) return
                     event.preventDefault()
                     event.stopPropagation()
                     setDropTarget(null)
@@ -154,11 +172,15 @@ export function LocalPane(): React.JSX.Element {
                     dropTarget === path ? 'bg-(--color-accent) text-white' : 'hover:bg-black/5'
                   }`}
                 >
-                  <FolderIcon
-                    className={`h-4 w-4 shrink-0 ${
-                      dropTarget === path ? 'text-white' : 'text-(--color-accent)'
-                    }`}
-                  />
+                  {isFolder ? (
+                    <FolderIcon
+                      className={`h-4 w-4 shrink-0 ${
+                        dropTarget === path ? 'text-white' : 'text-(--color-accent)'
+                      }`}
+                    />
+                  ) : (
+                    <FileIcon className="h-4 w-4 shrink-0 text-(--color-ink-muted)" />
+                  )}
                   <span className="truncate">{entry.name}</span>
                 </button>
               </li>

@@ -6,7 +6,7 @@ import { useDevices, useLocalDirectory, usePeerDirectory, usePeerShares } from '
 import { useUi } from '../store'
 import { EmptyState } from './EmptyState'
 import { IconView, ListView } from './FileViews'
-import { DRAG_MIME, type RemoteDrag } from './LocalPane'
+import { DRAG_MIME, LOCAL_DRAG_MIME, type LocalDrag, type RemoteDrag } from './LocalPane'
 
 /** The main pane. Which of the three things it is showing depends only on the location. */
 export function Browser({ onCount }: { onCount: (count: number | null) => void }): React.JSX.Element {
@@ -240,6 +240,7 @@ function RemoteBrowser({
   const navigate = useUi((state) => state.navigate)
   const viewMode = useUi((state) => state.viewMode)
   const setPaneOpen = useUi((state) => state.setPaneOpen)
+  const [receiving, setReceiving] = useState(false)
 
   onCount(entries?.length ?? null)
 
@@ -268,26 +269,74 @@ function RemoteBrowser({
     setPaneOpen(true)
   }
 
-  if (isLoading) return <EmptyState title="Loading…" />
-  if (error) {
-    return (
-      <EmptyState title="Could not open that folder">
-        <p className="max-w-md text-[13px] text-(--color-ink-muted)">{String(error)}</p>
-      </EmptyState>
-    )
-  }
-  if (!entries || entries.length === 0) return <EmptyState title="This folder is empty." />
-
   const open = (entry: DirEntry): void => {
     if (entry.kind === 'directory') {
       navigate({ kind: 'device', deviceId, shareId, path: joinRemote(path, entry.name) })
     }
   }
 
-  return viewMode === 'list' ? (
-    <ListView entries={entries} onOpen={open} onDragEntries={startDrag} />
-  ) : (
-    <IconView entries={entries} onOpen={open} onDragEntries={startDrag} />
+  /** Dropping local files here uploads them, but only into a share marked writable. */
+  const receive = async (event: React.DragEvent): Promise<void> => {
+    const raw = event.dataTransfer.getData(LOCAL_DRAG_MIME)
+    if (!raw || !share?.writable) return
+
+    const drag = JSON.parse(raw) as LocalDrag
+    await window.airbridge.transfers.upload(
+      deviceId,
+      shareId,
+      share.name,
+      drag.paths,
+      path
+    )
+  }
+
+  const body = (): React.JSX.Element => {
+    if (isLoading) return <EmptyState title="Loading…" />
+    if (error) {
+      return (
+        <EmptyState title="Could not open that folder">
+          <p className="max-w-md text-[13px] text-(--color-ink-muted)">{String(error)}</p>
+        </EmptyState>
+      )
+    }
+    if (!entries || entries.length === 0) {
+      return (
+        <EmptyState
+          title={
+            share?.writable ? 'This folder is empty. Drop files here to copy them across.' : 'This folder is empty.'
+          }
+        />
+      )
+    }
+
+    return viewMode === 'list' ? (
+      <ListView entries={entries} onOpen={open} onDragEntries={startDrag} />
+    ) : (
+      <IconView entries={entries} onOpen={open} onDragEntries={startDrag} />
+    )
+  }
+
+  return (
+    <div
+      className={`flex min-h-full flex-1 flex-col ${
+        receiving ? 'bg-(--color-accent)/10 ring-2 ring-(--color-accent) ring-inset' : ''
+      }`}
+      onDragOver={(event) => {
+        // Only claim the drop when it is local files and the share will accept them —
+        // otherwise a read-only share would light up and then silently do nothing.
+        if (!share?.writable || !event.dataTransfer.types.includes(LOCAL_DRAG_MIME)) return
+        event.preventDefault()
+        setReceiving(true)
+      }}
+      onDragLeave={() => setReceiving(false)}
+      onDrop={(event) => {
+        event.preventDefault()
+        setReceiving(false)
+        void receive(event)
+      }}
+    >
+      {body()}
+    </div>
   )
 }
 

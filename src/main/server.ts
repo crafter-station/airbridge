@@ -1,14 +1,16 @@
 import websocket from '@fastify/websocket'
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify'
-import { createReadStream } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { createReadStream, createWriteStream } from 'node:fs'
+import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
+import { pipeline } from 'node:stream/promises'
 import type { TLSSocket } from 'node:tls'
 
 import type { DirEntry, PairRequest, ShareEvent } from '@shared/types'
 import { getCertificate } from './cert'
 import { getDeviceId, getDeviceName } from './identity'
 import { isRealPathInside, resolveInside } from './paths'
+import { PART_SUFFIX } from './peer'
 import { handlePairRequest, PairingError } from './pairing'
 import { getShare, listPublicShares } from './shares'
 import { findByInboundToken, rememberAddress } from './trust'
@@ -37,11 +39,18 @@ interface PathQuery {
 /** Resolve a share plus a client path, or describe why it cannot be reached. */
 function locate(
   shareId: string,
-  requestedPath: string | undefined
+  requestedPath: string | undefined,
+  options: { forWriting?: boolean } = {}
 ): { ok: true; root: string; target: string } | { ok: false; status: number; error: string } {
   const share = getShare(shareId)
   if (!share) return { ok: false, status: 404, error: 'No such share' }
   if (!share.available) return { ok: false, status: 503, error: 'Share is unavailable' }
+
+  // Writability is checked here rather than in each handler, so a new write route cannot be
+  // added without passing through it.
+  if (options.forWriting && !share.writable) {
+    return { ok: false, status: 403, error: 'This share is read-only' }
+  }
 
   const target = resolveInside(share.path, requestedPath ?? '')
   if (!target || !isRealPathInside(share.path, target)) {
@@ -120,8 +129,15 @@ function buildServer(certificate: { key: string; cert: string }): FastifyInstanc
       requestCert: true,
       rejectUnauthorized: false
     },
-    logger: false
+    logger: false,
+    // Uploads are arbitrarily large; the route streams to disk rather than buffering.
+    bodyLimit: Number.MAX_SAFE_INTEGER
   })
+
+  // Hand uploads to the route as a raw stream instead of letting Fastify buffer and parse.
+  server.addContentTypeParser('application/octet-stream', (_request, payload, done) =>
+    done(null, payload)
+  )
 
   // Pairing is the one thing an unknown device may do, so it sits outside the authenticated
   // plugin below rather than being special-cased inside the auth hook.
@@ -238,6 +254,54 @@ function buildServer(certificate: { key: string; cert: string }): FastifyInstanc
 
         reply.header('content-length', stats.size)
         return reply.send(createReadStream(located.target))
+      }
+    )
+
+    /**
+     * Upload into a writable share.
+     *
+     * Same commit discipline as a download: the bytes land in a `.airbridge-part` sibling and
+     * are renamed into place once the stream ends, so a dropped connection cannot leave a
+     * truncated file wearing the real name.
+     */
+    authenticated.put<{ Params: ShareParams; Querystring: PathQuery }>(
+      '/shares/:id/file',
+      async (request, reply) => {
+        const located = locate(request.params.id, request.query.path, { forWriting: true })
+        if (!located.ok) return reply.code(located.status).send({ error: located.error })
+
+        const partPath = `${located.target}${PART_SUFFIX}`
+
+        try {
+          await mkdir(dirname(located.target), { recursive: true })
+          await pipeline(request.raw, createWriteStream(partPath))
+          await rename(partPath, located.target)
+        } catch (cause) {
+          await rm(partPath, { force: true })
+          throw cause
+        }
+
+        return reply.code(201).send({ path: request.query.path ?? '', bytes: (await stat(located.target)).size })
+      }
+    )
+
+    authenticated.delete<{ Params: ShareParams; Querystring: PathQuery }>(
+      '/shares/:id/file',
+      async (request, reply) => {
+        const located = locate(request.params.id, request.query.path, { forWriting: true })
+        if (!located.ok) return reply.code(located.status).send({ error: located.error })
+
+        // Refuse to delete the share root itself: that is the folder the user published, not
+        // something inside it.
+        if (located.target === located.root) {
+          return reply.code(403).send({ error: 'Cannot delete the share itself' })
+        }
+
+        const stats = await stat(located.target).catch(() => null)
+        if (!stats) return reply.code(404).send({ error: 'No such file' })
+
+        await rm(located.target, { recursive: stats.isDirectory(), force: false })
+        return reply.code(204).send()
       }
     )
   })

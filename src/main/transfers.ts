@@ -1,12 +1,17 @@
 import { app, dialog } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { access, mkdir } from 'node:fs/promises'
-import { extname, join } from 'node:path'
+import { access, mkdir, readdir, stat } from 'node:fs/promises'
+import { basename, extname, join } from 'node:path'
 
 import { EVENTS } from '@shared/ipc'
-import type { PeerAddress, TransferItem, TransferJob } from '@shared/types'
+import type {
+  PeerAddress,
+  TransferDirection,
+  TransferItem,
+  TransferJob
+} from '@shared/types'
 import { broadcast } from './events'
-import { downloadFile, listPeerDirectory } from './peer'
+import { downloadFile, listPeerDirectory, uploadFile } from './peer'
 
 /** Four at a time. Enough to keep a gigabit link busy on small files without turning a
  *  folder of thousands into a thousand simultaneous TLS handshakes. */
@@ -295,6 +300,144 @@ async function execute(entry: RunningJob, peer: PeerAddress, shareId: string, it
   }
 }
 
+interface PlannedUpload {
+  localPath: string
+  remotePath: string
+  size: number
+}
+
+/** Walk the local tree, mirroring its shape into the remote folder. */
+async function planUpload(
+  paths: string[],
+  remoteDirectory: string
+): Promise<PlannedUpload[]> {
+  const planned: PlannedUpload[] = []
+
+  const walk = async (localPath: string, remotePath: string): Promise<void> => {
+    const stats = await stat(localPath)
+
+    if (!stats.isDirectory()) {
+      planned.push({ localPath, remotePath, size: stats.size })
+      return
+    }
+
+    for (const entry of await readdir(localPath, { withFileTypes: true })) {
+      await walk(join(localPath, entry.name), `${remotePath}/${entry.name}`)
+    }
+  }
+
+  for (const path of paths) {
+    const name = basename(path)
+    await walk(path, remoteDirectory ? `${remoteDirectory}/${name}` : name)
+  }
+
+  return planned
+}
+
+async function executeUpload(
+  entry: RunningJob,
+  peer: PeerAddress,
+  shareId: string,
+  paths: string[],
+  remoteDirectory: string
+): Promise<void> {
+  const { job, controller } = entry
+
+  try {
+    const planned = await planUpload(paths, remoteDirectory)
+
+    job.totalFiles = planned.length
+    job.totalBytes = planned.reduce((total, file) => total + file.size, 0)
+    job.status = 'transferring'
+    scheduleBroadcast(true)
+
+    // Collisions are the receiving side's business here: it owns the folder, and prompting
+    // the sender about files they cannot see would be asking the wrong person.
+    await runPool(planned, CONCURRENCY, async (file) => {
+      controller.signal.throwIfAborted()
+      job.currentFile = basename(file.localPath)
+
+      await uploadFile(peer, shareId, file.localPath, file.remotePath, {
+        signal: controller.signal,
+        onProgress: (bytes) => {
+          job.transferredBytes += bytes
+          scheduleBroadcast()
+        }
+      })
+
+      job.completedFiles++
+      scheduleBroadcast()
+    })
+
+    job.status = 'done'
+    job.currentFile = null
+  } catch (cause) {
+    if (controller.signal.aborted) {
+      job.status = 'cancelled'
+    } else {
+      job.status = 'failed'
+      job.error = cause instanceof Error ? cause.message : String(cause)
+    }
+  } finally {
+    job.finishedAt = Date.now()
+    scheduleBroadcast(true)
+  }
+}
+
+/**
+ * Queue an upload into a writable share and return immediately with the job.
+ */
+export function startUpload(details: {
+  peer: PeerAddress
+  deviceId: string
+  deviceName: string
+  shareId: string
+  shareName: string
+  localPaths: string[]
+  remoteDirectory: string
+}): TransferJob {
+  const job = newJob({
+    ...details,
+    direction: 'upload',
+    destination: `${details.shareName}${details.remoteDirectory ? `/${details.remoteDirectory}` : ''}`
+  })
+
+  const entry: RunningJob = { job, controller: new AbortController() }
+  jobs.set(job.id, entry)
+  scheduleBroadcast(true)
+
+  void executeUpload(entry, details.peer, details.shareId, details.localPaths, details.remoteDirectory)
+
+  return job
+}
+
+function newJob(details: {
+  deviceId: string
+  deviceName: string
+  shareName: string
+  destination: string
+  direction: TransferDirection
+}): TransferJob {
+  return {
+    id: randomUUID(),
+    deviceId: details.deviceId,
+    deviceName: details.deviceName,
+    shareName: details.shareName,
+    destination: details.destination,
+    direction: details.direction,
+    status: 'scanning',
+    totalBytes: 0,
+    transferredBytes: 0,
+    totalFiles: 0,
+    completedFiles: 0,
+    skippedFiles: 0,
+    currentFile: null,
+    error: null,
+    startedAt: Date.now(),
+    finishedAt: null
+  }
+}
+
 /**
  * Queue a copy and return immediately with the job.
  *
@@ -310,23 +453,7 @@ export function startCopy(details: {
   items: TransferItem[]
   destination: string
 }): TransferJob {
-  const job: TransferJob = {
-    id: randomUUID(),
-    deviceId: details.deviceId,
-    deviceName: details.deviceName,
-    shareName: details.shareName,
-    destination: details.destination,
-    status: 'scanning',
-    totalBytes: 0,
-    transferredBytes: 0,
-    totalFiles: 0,
-    completedFiles: 0,
-    skippedFiles: 0,
-    currentFile: null,
-    error: null,
-    startedAt: Date.now(),
-    finishedAt: null
-  }
+  const job = newJob({ ...details, direction: 'download' })
 
   const entry: RunningJob = { job, controller: new AbortController() }
   jobs.set(job.id, entry)

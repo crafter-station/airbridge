@@ -176,12 +176,16 @@ export type TransferStatus =
   | 'failed'
   | 'cancelled'
 
+export type TransferDirection = 'download' | 'upload'
+
 export interface TransferJob {
   id: string
   deviceId: string
   deviceName: string
   shareName: string
+  /** A local folder for a download, a remote one for an upload. */
   destination: string
+  direction: TransferDirection
   status: TransferStatus
   /** Zero until scanning finishes, so progress is honest rather than optimistic. */
   totalBytes: number

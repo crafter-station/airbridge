@@ -1,8 +1,9 @@
-import { createWriteStream } from 'node:fs'
+import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, rename, rm, stat, utimes } from 'node:fs/promises'
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { basename, join } from 'node:path'
+import type { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { TLSSocket } from 'node:tls'
 
@@ -36,6 +37,8 @@ interface RequestOptions {
   method?: string
   headers?: Record<string, string>
   body?: unknown
+  /** A body too big to hold in memory. Mutually exclusive with `body`. */
+  stream?: { source: Readable; bytes: number }
   signal?: AbortSignal
 }
 
@@ -69,6 +72,12 @@ async function peerRequest(
         ...(peer.token ? { authorization: `Bearer ${peer.token}` } : {}),
         ...(payload
           ? { 'content-type': 'application/json', 'content-length': payload.byteLength }
+          : {}),
+        ...(options.stream
+          ? {
+              'content-type': 'application/octet-stream',
+              'content-length': options.stream.bytes
+            }
           : {}),
         ...options.headers
       }
@@ -117,6 +126,12 @@ async function peerRequest(
         fingerprint
       })
     )
+
+    if (options.stream) {
+      options.stream.source.on('error', fail)
+      options.stream.source.pipe(request)
+      return
+    }
 
     if (payload) request.write(payload)
     request.end()
@@ -274,4 +289,57 @@ export async function downloadFile(
   }
 
   return { path: finalPath, bytes: (await stat(finalPath)).size }
+}
+
+/**
+ * Send one local file into a writable share.
+ *
+ * No resume in this direction: the receiving end commits with a rename, so a failed upload
+ * leaves nothing to continue from. Retrying re-sends the file, which for the sizes this app
+ * moves over a LAN is cheaper than a resumable-upload protocol.
+ */
+export async function uploadFile(
+  peer: PeerAddress,
+  shareId: string,
+  localPath: string,
+  remotePath: string,
+  options: { signal?: AbortSignal; onProgress?: (chunkBytes: number) => void } = {}
+): Promise<{ bytes: number }> {
+  const { size } = await stat(localPath)
+  const source = createReadStream(localPath)
+
+  if (options.onProgress) {
+    source.on('data', (chunk) => options.onProgress?.((chunk as Buffer).length))
+  }
+
+  const response = await peerRequest(peer, {
+    method: 'PUT',
+    path: `/shares/${encodeURIComponent(shareId)}/file${query(remotePath)}`,
+    stream: { source, bytes: size },
+    signal: options.signal
+  })
+
+  if (response.status >= 400) {
+    throw new Error(`Peer returned ${response.status}: ${await readBody(response)}`)
+  }
+
+  await readBody(response)
+  return { bytes: size }
+}
+
+export async function deleteRemote(
+  peer: PeerAddress,
+  shareId: string,
+  remotePath: string
+): Promise<void> {
+  const response = await peerRequest(peer, {
+    method: 'DELETE',
+    path: `/shares/${encodeURIComponent(shareId)}/file${query(remotePath)}`
+  })
+
+  if (response.status >= 400) {
+    throw new Error(`Peer returned ${response.status}: ${await readBody(response)}`)
+  }
+
+  await readBody(response)
 }

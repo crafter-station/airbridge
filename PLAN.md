@@ -74,7 +74,7 @@ Vertical slice first — the risk is in transport and discovery, not CSS.
       progress.
 - [x] **M4 — Finder UI.** Sidebar, List/Icon views, toolbar, local pane drawer, cross-pane drag.
 - [x] **M5 — Live.** chokidar → WebSocket, unavailable-share handling.
-- [ ] **M6 — Write + ship.** Per-share write toggle, upload/delete, CSP and sandbox hardening, app
+- [x] **M6 — Write + ship.** Per-share write toggle, upload/delete, CSP and sandbox hardening, app
       icon, unsigned packaged builds for both OSes.
 
 ## Decisions

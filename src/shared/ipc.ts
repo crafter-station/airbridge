@@ -9,10 +9,12 @@ export const IPC = {
   sharesAdd: 'shares:add',
   sharesRemove: 'shares:remove',
   sharesSetWritable: 'shares:set-writable',
+  sharesMenu: 'shares:menu',
 
   devicesList: 'devices:list',
   devicesPair: 'devices:pair',
   devicesUnpair: 'devices:unpair',
+  devicesMenu: 'devices:menu',
 
   peerShares: 'peer:shares',
   peerList: 'peer:list',
@@ -22,6 +24,7 @@ export const IPC = {
 
   transfersList: 'transfers:list',
   transfersCopy: 'transfers:copy',
+  transfersUpload: 'transfers:upload',
   transfersCancel: 'transfers:cancel',
   transfersClear: 'transfers:clear',
   transfersReveal: 'transfers:reveal'

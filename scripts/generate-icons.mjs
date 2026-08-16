@@ -119,3 +119,99 @@ for (const [name, scale, colour] of outputs) {
   writeFileSync(join(RESOURCES, name), render(scale, colour))
   console.log(`resources/${name}  ${SIZE * scale}x${SIZE * scale}`)
 }
+
+// --- Application icon ------------------------------------------------------------------
+//
+// The tray mask is 16 pixels wide; scaling it up 64 times would look like exactly what it is.
+// The app icon is drawn from polygons instead, supersampled, so the diagonals come out clean.
+// electron-builder derives the .ico and .icns from this one file.
+
+const ICON_SIZE = 1024
+const SAMPLES = 3
+
+/** Two arrows crossing, in a 0..1 space, matching the tray glyph's idea at a size that can
+ *  afford real edges. */
+const ARROWS = [
+  // Pointing right, upper.
+  [
+    [0.12, 0.305],
+    [0.6, 0.305],
+    [0.6, 0.235],
+    [0.82, 0.36],
+    [0.6, 0.485],
+    [0.6, 0.415],
+    [0.12, 0.415]
+  ],
+  // Pointing left, lower.
+  [
+    [0.88, 0.585],
+    [0.4, 0.585],
+    [0.4, 0.515],
+    [0.18, 0.64],
+    [0.4, 0.765],
+    [0.4, 0.695],
+    [0.88, 0.695]
+  ]
+]
+
+function insidePolygon(polygon, x, y) {
+  let inside = false
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i]
+    const [xj, yj] = polygon[j]
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+/** A rounded square, close enough to the shape both platforms expect of an app icon. */
+function insideRoundedSquare(x, y, radius) {
+  const dx = Math.max(radius - x, 0, x - (1 - radius))
+  const dy = Math.max(radius - y, 0, y - (1 - radius))
+  return dx * dx + dy * dy <= radius * radius
+}
+
+function renderAppIcon() {
+  const pixels = Buffer.alloc(ICON_SIZE * ICON_SIZE * 4)
+
+  for (let py = 0; py < ICON_SIZE; py++) {
+    for (let px = 0; px < ICON_SIZE; px++) {
+      let background = 0
+      let glyph = 0
+
+      // Supersample: the only thing separating a drawn icon from a scaled-up mask is what
+      // happens along the diagonals.
+      for (let sy = 0; sy < SAMPLES; sy++) {
+        for (let sx = 0; sx < SAMPLES; sx++) {
+          const x = (px + (sx + 0.5) / SAMPLES) / ICON_SIZE
+          const y = (py + (sy + 0.5) / SAMPLES) / ICON_SIZE
+
+          if (!insideRoundedSquare(x, y, 0.22)) continue
+          background++
+          if (ARROWS.some((arrow) => insidePolygon(arrow, x, y))) glyph++
+        }
+      }
+
+      const total = SAMPLES * SAMPLES
+      const alpha = Math.round((background / total) * 255)
+      const white = glyph / total
+
+      // A gentle vertical gradient, so the tile does not read as flat colour.
+      const shade = py / ICON_SIZE
+      const base = [Math.round(30 + 18 * shade), Math.round(108 - 22 * shade), Math.round(255 - 40 * shade)]
+
+      const offset = (py * ICON_SIZE + px) * 4
+      for (let channel = 0; channel < 3; channel++) {
+        pixels[offset + channel] = Math.round(base[channel] * (1 - white) + 255 * white)
+      }
+      pixels[offset + 3] = alpha
+    }
+  }
+
+  return encodePng(ICON_SIZE, ICON_SIZE, pixels)
+}
+
+const BUILD = join(RESOURCES, '..', 'build')
+mkdirSync(BUILD, { recursive: true })
+writeFileSync(join(BUILD, 'icon.png'), renderAppIcon())
+console.log(`build/icon.png  ${ICON_SIZE}x${ICON_SIZE}`)

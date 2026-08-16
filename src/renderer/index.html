@@ -3,10 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Permissive enough for Vite's dev server. Tightened in the M6 hardening pass. -->
+    <!--
+      Production policy: no remote anything, no eval. Every byte the window shows is bundled,
+      and all network access happens in the main process, so the renderer needs none.
+
+      electron.vite.config.ts relaxes this for `electron-vite dev`, where Vite's HMR client
+      needs inline scripts and a websocket back to the dev server.
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: http: https:"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'none'; base-uri 'none'"
     />
     <title>airbridge</title>
   </head>

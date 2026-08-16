@@ -41,6 +41,7 @@ const api = {
     remove: (id: string): Promise<Share[]> => ipcRenderer.invoke(IPC.sharesRemove, id),
     setWritable: (id: string, writable: boolean): Promise<Share[]> =>
       ipcRenderer.invoke(IPC.sharesSetWritable, id, writable),
+    menu: (id: string): Promise<void> => ipcRenderer.invoke(IPC.sharesMenu, id),
     onChanged: subscribe<Share[]>(EVENTS.shares)
   },
 
@@ -50,6 +51,8 @@ const api = {
       ipcRenderer.invoke(IPC.devicesPair, host, port),
     unpair: (deviceId: string): Promise<KnownDevice[]> =>
       ipcRenderer.invoke(IPC.devicesUnpair, deviceId),
+    menu: (deviceId: string, deviceName: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.devicesMenu, deviceId, deviceName),
     onChanged: subscribe<KnownDevice[]>(EVENTS.devices)
   },
 
@@ -75,6 +78,21 @@ const api = {
       destination?: string
     ): Promise<TransferJob | null> =>
       ipcRenderer.invoke(IPC.transfersCopy, deviceId, shareId, shareName, items, destination),
+    upload: (
+      deviceId: string,
+      shareId: string,
+      shareName: string,
+      localPaths: string[],
+      remoteDirectory: string
+    ): Promise<TransferJob> =>
+      ipcRenderer.invoke(
+        IPC.transfersUpload,
+        deviceId,
+        shareId,
+        shareName,
+        localPaths,
+        remoteDirectory
+      ),
     cancel: (id: string): Promise<void> => ipcRenderer.invoke(IPC.transfersCancel, id),
     clear: (): Promise<TransferJob[]> => ipcRenderer.invoke(IPC.transfersClear),
     reveal: (path: string): Promise<void> => ipcRenderer.invoke(IPC.transfersReveal, path),

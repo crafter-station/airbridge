@@ -25,6 +25,9 @@ export function Sidebar(): React.JSX.Element {
               onClick={() =>
                 navigate({ kind: 'device', deviceId: device.deviceId, shareId: null, path: '' })
               }
+              onContextMenu={() =>
+                void window.airbridge.devices.menu(device.deviceId, device.deviceName)
+              }
               icon={<DeviceIcon className="h-4 w-4 text-(--color-accent)" />}
               trailing={
                 <span
@@ -79,6 +82,7 @@ export function Sidebar(): React.JSX.Element {
             key={share.id}
             selected={location.kind === 'local' && location.path === share.path}
             onClick={() => navigate({ kind: 'local', path: share.path })}
+            onContextMenu={() => void window.airbridge.shares.menu(share.id)}
             icon={
               <FolderIcon
                 className={`h-4 w-4 ${share.available ? 'text-(--color-accent)' : 'text-black/25'}`}
@@ -125,19 +129,25 @@ function Row({
   icon,
   trailing,
   selected,
-  onClick
+  onClick,
+  onContextMenu
 }: {
   children: React.ReactNode
   icon: React.ReactNode
   trailing?: React.ReactNode
   selected: boolean
   onClick: () => void
+  onContextMenu?: () => void
 }): React.JSX.Element {
   return (
     <li>
       <button
         type="button"
         onClick={onClick}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          onContextMenu?.()
+        }}
         className={`app-no-drag flex w-full items-center gap-2 rounded-md px-2 py-[5px] text-left text-[13px] ${
           selected ? 'bg-(--color-accent) text-white' : 'hover:bg-black/5'
         }`}

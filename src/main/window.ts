@@ -47,9 +47,9 @@ function create(): BrowserWindow {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      // electron-vite emits a CommonJS preload; sandbox stays off to match that toolchain.
-      // Revisit as part of the M6 hardening pass.
-      sandbox: false
+      // The preload touches nothing but contextBridge and ipcRenderer, both of which work in
+      // a sandboxed renderer — so there is no reason to give this process Node at all.
+      sandbox: true
     }
   })
 

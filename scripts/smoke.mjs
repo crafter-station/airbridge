@@ -12,7 +12,15 @@ import electronPath from 'electron'
 import { spawn } from 'node:child_process'
 import { X509Certificate } from 'node:crypto'
 import { once } from 'node:events'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { request } from 'node:https'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -41,8 +49,10 @@ function check(description, condition, detail) {
  * presents a client certificate of its own — which is what the server checks the bearer
  * token against.
  */
-function call(path, { token, headers = {}, identity, method = 'GET', body } = {}) {
-  const payload = body === undefined ? null : Buffer.from(JSON.stringify(body), 'utf8')
+function call(path, { token, headers = {}, identity, method = 'GET', body, raw } = {}) {
+  // `body` is JSON; `raw` is an octet-stream upload.
+  const payload = raw ?? (body === undefined ? null : Buffer.from(JSON.stringify(body), 'utf8'))
+  const contentType = raw ? 'application/octet-stream' : 'application/json'
 
   return new Promise((resolve, reject) => {
     const req = request(
@@ -57,7 +67,7 @@ function call(path, { token, headers = {}, identity, method = 'GET', body } = {}
         headers: {
           ...(token ? { authorization: `Bearer ${token}` } : {}),
           ...(payload
-            ? { 'content-type': 'application/json', 'content-length': payload.byteLength }
+            ? { 'content-type': contentType, 'content-length': payload.byteLength }
             : {}),
           ...headers
         }
@@ -138,9 +148,19 @@ const shareId = '00000000-0000-4000-8000-00000000cafe'
 const deviceId = '00000000-0000-4000-8000-0000000000aa'
 const token = 'smoke-token'
 
+const writableShareId = '00000000-0000-4000-8000-00000000beef'
+const dropbox = mkdtempSync(join(tmpdir(), 'airbridge-dropbox-'))
+
 writeFileSync(
   join(dataDirectory, 'shares.json'),
-  JSON.stringify([{ id: shareId, name: 'Smoke', path: fixture, writable: false }], null, 2)
+  JSON.stringify(
+    [
+      { id: shareId, name: 'Smoke', path: fixture, writable: false },
+      { id: writableShareId, name: 'Dropbox', path: dropbox, writable: true }
+    ],
+    null,
+    2
+  )
 )
 writeFileSync(
   join(dataDirectory, 'trust.json'),
@@ -403,10 +423,86 @@ try {
 
   const directoryAsFile = await call(`/shares/${shareId}/file?path=nested`, { token, identity })
   check('refuses to stream a directory', directoryAsFile.status === 404, directoryAsFile.status)
+
+  // --- Writing ---
+
+  const readOnlyUpload = await call(`/shares/${shareId}/file?path=intruder.txt`, {
+    token,
+    identity,
+    method: 'PUT',
+    raw: Buffer.from('should not land')
+  })
+  check('refuses to upload into a read-only share', readOnlyUpload.status === 403, readOnlyUpload.status)
+  check(
+    'and writes nothing when it refuses',
+    !existsSync(join(fixture, 'intruder.txt'))
+  )
+
+  const readOnlyDelete = await call(`/shares/${shareId}/file?path=hello.txt`, {
+    token,
+    identity,
+    method: 'DELETE'
+  })
+  check('refuses to delete from a read-only share', readOnlyDelete.status === 403, readOnlyDelete.status)
+  check('and leaves the file alone', existsSync(join(fixture, 'hello.txt')))
+
+  const payload = Buffer.alloc(200_000, 9)
+  const upload = await call(`/shares/${writableShareId}/file?path=uploaded.bin`, {
+    token,
+    identity,
+    method: 'PUT',
+    raw: payload
+  })
+  check('accepts an upload into a writable share', upload.status === 201, upload.status)
+  check(
+    'writes the exact bytes',
+    existsSync(join(dropbox, 'uploaded.bin')) &&
+      readFileSync(join(dropbox, 'uploaded.bin')).equals(payload)
+  )
+  check(
+    'leaves no partial file behind',
+    !existsSync(join(dropbox, `uploaded.bin.airbridge-part`))
+  )
+
+  const nestedUpload = await call(
+    `/shares/${writableShareId}/file?path=${encodeURIComponent('a/b/deep.txt')}`,
+    { token, identity, method: 'PUT', raw: Buffer.from('nested') }
+  )
+  check('creates missing folders on the way in', nestedUpload.status === 201, nestedUpload.status)
+  check('and puts the file where it was asked', existsSync(join(dropbox, 'a', 'b', 'deep.txt')))
+
+  const escapingUpload = await call(
+    `/shares/${writableShareId}/file?path=${encodeURIComponent('../escaped.txt')}`,
+    { token, identity, method: 'PUT', raw: Buffer.from('nope') }
+  )
+  check('refuses an upload that escapes the share', escapingUpload.status === 403, escapingUpload.status)
+
+  const deleteRoot = await call(`/shares/${writableShareId}/file`, {
+    token,
+    identity,
+    method: 'DELETE'
+  })
+  check('refuses to delete the share itself', deleteRoot.status === 403, deleteRoot.status)
+  check('and the folder is still there', existsSync(dropbox))
+
+  const deleteMissing = await call(`/shares/${writableShareId}/file?path=ghost.txt`, {
+    token,
+    identity,
+    method: 'DELETE'
+  })
+  check('404s deleting something absent', deleteMissing.status === 404, deleteMissing.status)
+
+  const remove = await call(`/shares/${writableShareId}/file?path=uploaded.bin`, {
+    token,
+    identity,
+    method: 'DELETE'
+  })
+  check('deletes a file', remove.status === 204, remove.status)
+  check('and it is gone', !existsSync(join(dropbox, 'uploaded.bin')))
 } finally {
   child.kill()
   await once(child, 'exit').catch(() => {})
-  for (const directory of [fixture, outside, dataDirectory]) {
+  for (const directory of [fixture, outside, dataDirectory, dropbox]) {
     rmSync(directory, { recursive: true, force: true })
   }
 }
