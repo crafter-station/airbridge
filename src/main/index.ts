@@ -23,6 +23,7 @@ import { showDeviceMenu, showShareMenu } from './menus'
 import { localAddresses } from './network'
 import { listPeerDirectory, listPeerShares } from './peer'
 import { startPeerEvents, stopPeerEvents, syncConnections } from './peerEvents'
+import { handlePreviewRequests, registerPreviewScheme } from './preview'
 import { cancelJob, clearFinishedJobs, listJobs, startCopy, startUpload } from './transfers'
 import { onShareAvailabilityChanged, refreshWatchers, startWatching, stopWatching } from './watcher'
 import { serverPort, startServer, stopServer } from './server'
@@ -43,6 +44,10 @@ if (dataDirectory) app.setPath('userData', dataDirectory)
 
 /** Loopback testing needs two instances on one machine, so the lock is opt-out. */
 const allowMultipleInstances = process.env['AIRBRIDGE_ALLOW_MULTI'] === '1'
+
+// Scheme privileges have to be declared before the app is ready; registering the handler
+// afterwards is not enough to make it streamable or fetchable.
+registerPreviewScheme()
 
 function announceShares(): Share[] {
   const shares = listShares()
@@ -217,6 +222,7 @@ if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     ensureIdentity()
     registerHandlers()
+    handlePreviewRequests()
 
     // Sharing starts with the app, not with the window: the point of living in the tray is
     // that a share published this morning is still reachable this afternoon.

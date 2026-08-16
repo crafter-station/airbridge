@@ -204,6 +204,27 @@ export async function listPeerShares(peer: PeerAddress): Promise<PeerShares> {
   return { shares, fingerprint: response.fingerprint }
 }
 
+/**
+ * Open a remote file as a stream, passing a Range header straight through.
+ *
+ * This is what makes previewing a large video quick: the media element asks for the few
+ * kilobytes it needs to start, and seeking asks for the bytes around the new position. None
+ * of it is copied to disk, and nothing waits for the whole file.
+ */
+export async function openPeerFile(
+  peer: PeerAddress,
+  shareId: string,
+  remotePath: string,
+  range: string | null
+): Promise<{ status: number; headers: IncomingHttpHeaders; body: IncomingMessage }> {
+  const response = await peerRequest(peer, {
+    path: `/shares/${encodeURIComponent(shareId)}/file${query(remotePath)}`,
+    headers: range ? { range } : undefined
+  })
+
+  return { status: response.status, headers: response.headers, body: response.body }
+}
+
 export async function listPeerDirectory(
   peer: PeerAddress,
   shareId: string,

@@ -1,7 +1,18 @@
-import { BrowserWindow, shell } from 'electron'
+import { BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
 
 let mainWindow: BrowserWindow | null = null
+
+/** Must track --color-chrome and --color-ink in styles.css. The window frame and the title-bar
+ *  overlay are painted by the OS, so they cannot read the stylesheet the way everything else
+ *  in the window does. */
+const CHROME = { light: '#f2f2f2', dark: '#2b2b2d' }
+const INK = { light: '#1d1d1f', dark: '#f2f2f5' }
+
+function palette(): { chrome: string; ink: string } {
+  const mode = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+  return { chrome: CHROME[mode], ink: INK[mode] }
+}
 
 /** Set just before app.quit() so the close handler stops intercepting. Without it the app
  *  can never exit: every close is swallowed to keep shares alive in the tray. */
@@ -22,11 +33,12 @@ function chromeOptions(): Electron.BrowserWindowConstructorOptions {
   }
 
   if (process.platform === 'win32') {
+    const { chrome, ink } = palette()
     return {
       titleBarStyle: 'hidden',
       // Must match --color-chrome, or the strip the OS paints its buttons on shows as a
-      // lighter rectangle sitting inside our toolbar.
-      titleBarOverlay: { color: '#f2f2f2', symbolColor: '#1d1d1f', height: TITLE_BAR_HEIGHT }
+      // differently-coloured rectangle sitting inside our toolbar.
+      titleBarOverlay: { color: chrome, symbolColor: ink, height: TITLE_BAR_HEIGHT }
     }
   }
 
@@ -41,7 +53,9 @@ function create(): BrowserWindow {
     minHeight: 480,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: '#f6f6f6',
+    // Painted before the renderer has anything on screen, so a light flash on a dark desktop
+    // is exactly what this avoids.
+    backgroundColor: palette().chrome,
     ...chromeOptions(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -49,7 +63,10 @@ function create(): BrowserWindow {
       nodeIntegration: false,
       // The preload touches nothing but contextBridge and ipcRenderer, both of which work in
       // a sandboxed renderer — so there is no reason to give this process Node at all.
-      sandbox: true
+      sandbox: true,
+      // Chromium's built-in PDF viewer, for the preview panel. It only ever sees bytes from
+      // our own protocol; the content policy admits no other source.
+      plugins: true
     }
   })
 
@@ -65,6 +82,22 @@ function create(): BrowserWindow {
   win.on('closed', () => {
     mainWindow = null
   })
+
+  // The renderer follows the OS theme through prefers-color-scheme on its own. These two are
+  // OS-drawn surfaces that do not, so they are repainted by hand when the setting flips.
+  const followTheme = (): void => {
+    if (win.isDestroyed()) return
+
+    const { chrome, ink } = palette()
+    win.setBackgroundColor(chrome)
+
+    if (process.platform === 'win32') {
+      win.setTitleBarOverlay({ color: chrome, symbolColor: ink, height: TITLE_BAR_HEIGHT })
+    }
+  }
+
+  nativeTheme.on('updated', followTheme)
+  win.on('closed', () => nativeTheme.off('updated', followTheme))
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url)

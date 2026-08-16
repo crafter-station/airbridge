@@ -5,6 +5,7 @@
   "private": true,
   "license": "MIT",
   "author": "Ignacio Rueda",
+  "packageManager": "pnpm@11.22.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/crafter-station/airbridge.git"
@@ -12,18 +13,16 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "pnpm typecheck && electron-vite build",
+    "build": "npm run typecheck && electron-vite build",
     "preview": "electron-vite preview",
-    "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
-    "typecheck:node": "tsc -p tsconfig.node.json --noEmit",
-    "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "icons": "node scripts/generate-icons.mjs",
     "smoke": "node scripts/smoke.mjs",
     "loopback": "node scripts/loopback.mjs",
     "demo": "node scripts/demo.mjs",
-    "package": "pnpm build && electron-builder",
-    "package:dir": "pnpm build && electron-builder --dir",
-    "test": "pnpm smoke && pnpm loopback"
+    "package": "npm run build && electron-builder",
+    "package:dir": "npm run build && electron-builder --dir",
+    "test": "node scripts/smoke.mjs && node scripts/loopback.mjs"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

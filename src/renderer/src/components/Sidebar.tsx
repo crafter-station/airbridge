@@ -33,7 +33,7 @@ export function Sidebar(): React.JSX.Element {
                 <span
                   aria-label={device.online ? 'Online' : 'Offline'}
                   className={`h-1.5 w-1.5 rounded-full ${
-                    device.online ? 'bg-green-500' : 'bg-black/20'
+                    device.online ? 'bg-(--color-online)' : 'bg-(--color-offline)'
                   }`}
                 />
               }
@@ -53,7 +53,7 @@ export function Sidebar(): React.JSX.Element {
               onClick={() =>
                 navigate({ kind: 'device', deviceId: device.deviceId, shareId: null, path: '' })
               }
-              icon={<DeviceIcon className="h-4 w-4 text-black/30" />}
+              icon={<DeviceIcon className="h-4 w-4 text-(--color-ink-muted)" />}
             >
               {device.deviceName}
             </Row>
@@ -85,7 +85,9 @@ export function Sidebar(): React.JSX.Element {
             onContextMenu={() => void window.airbridge.shares.menu(share.id)}
             icon={
               <FolderIcon
-                className={`h-4 w-4 ${share.available ? 'text-(--color-accent)' : 'text-black/25'}`}
+                className={`h-4 w-4 ${
+                  share.available ? 'text-(--color-accent)' : 'text-(--color-offline)'
+                }`}
               />
             }
             trailing={
@@ -149,10 +151,10 @@ function Row({
           onContextMenu?.()
         }}
         className={`app-no-drag flex w-full items-center gap-2 rounded-md px-2 py-[5px] text-left text-[13px] ${
-          selected ? 'bg-(--color-accent) text-white' : 'hover:bg-black/5'
+          selected ? 'bg-(--color-accent) text-(--color-on-accent)' : 'hover:bg-(--color-hover)'
         }`}
       >
-        <span className={selected ? 'text-white' : undefined}>{icon}</span>
+        <span className={selected ? 'text-(--color-on-accent)' : undefined}>{icon}</span>
         <span className="min-w-0 flex-1 truncate">{children}</span>
         {trailing}
       </button>

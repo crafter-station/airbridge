@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import type { DirEntry, PublicShare } from '@shared/types'
 import { joinRemote } from '../format'
@@ -7,6 +7,7 @@ import { useUi } from '../store'
 import { EmptyState } from './EmptyState'
 import { IconView, ListView } from './FileViews'
 import { DRAG_MIME, LOCAL_DRAG_MIME, type LocalDrag, type RemoteDrag } from './LocalPane'
+import { useQuickLook } from './Preview'
 
 /** The main pane. Which of the three things it is showing depends only on the location. */
 export function Browser({ onCount }: { onCount: (count: number | null) => void }): React.JSX.Element {
@@ -74,21 +75,21 @@ function PairList({
         {devices.map((device) => (
           <li
             key={device.deviceId}
-            className="flex items-center gap-3 rounded-lg border border-(--color-chrome-border) bg-white px-3 py-2 text-left"
+            className="flex items-center gap-3 rounded-lg border border-(--color-chrome-border) bg-(--color-surface) px-3 py-2 text-left"
           >
             <span className="min-w-0 flex-1 truncate text-[13px]">{device.deviceName}</span>
             <button
               type="button"
               disabled={pending !== null || !device.host}
               onClick={() => void pair(device.deviceId, device.host ?? '', device.port ?? 0)}
-              className="rounded-md bg-(--color-accent) px-2.5 py-1 text-[12px] text-white disabled:opacity-40"
+              className="rounded-md bg-(--color-accent) px-2.5 py-1 text-[12px] text-(--color-on-accent) disabled:opacity-40"
             >
               {pending === device.deviceId ? 'Waiting…' : 'Connect'}
             </button>
           </li>
         ))}
       </ul>
-      {error && <p className="mt-2 text-[12px] text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-[12px] text-(--color-danger)">{error}</p>}
       {pending && (
         <p className="mt-2 text-[12px] text-(--color-ink-muted)">
           Approve the request on the other machine.
@@ -137,17 +138,17 @@ function ConnectByAddress(): React.JSX.Element {
           value={address}
           onChange={(event) => setAddress(event.target.value)}
           placeholder="192.168.1.24"
-          className="min-w-0 flex-1 rounded-md border border-(--color-chrome-border) bg-white px-2 py-1 text-[13px] select-text"
+          className="min-w-0 flex-1 rounded-md border border-(--color-chrome-border) bg-(--color-surface) px-2 py-1 text-[13px] select-text"
         />
         <button
           type="submit"
           disabled={busy || address.trim() === ''}
-          className="rounded-md border border-(--color-chrome-border) bg-white px-2.5 py-1 text-[12px] hover:bg-(--color-sidebar) disabled:opacity-40"
+          className="rounded-md border border-(--color-chrome-border) bg-(--color-surface) px-2.5 py-1 text-[12px] hover:bg-(--color-sidebar) disabled:opacity-40"
         >
           Connect
         </button>
       </div>
-      {error && <p className="text-[12px] text-red-600">{error}</p>}
+      {error && <p className="text-[12px] text-(--color-danger)">{error}</p>}
     </form>
   )
 }
@@ -213,7 +214,7 @@ function ShareTile({
         disabled={!share.available}
         onDoubleClick={onOpen}
         onClick={onOpen}
-        className="flex w-full flex-col gap-1 rounded-lg border border-(--color-chrome-border) bg-white p-3 text-left hover:border-(--color-accent) disabled:opacity-50 disabled:hover:border-(--color-chrome-border)"
+        className="flex w-full flex-col gap-1 rounded-lg border border-(--color-chrome-border) bg-(--color-surface) p-3 text-left hover:border-(--color-accent) disabled:opacity-50 disabled:hover:border-(--color-chrome-border)"
       >
         <span className="truncate text-[13px] font-medium">{share.name}</span>
         <span className="text-[11px] text-(--color-ink-muted)">
@@ -240,7 +241,16 @@ function RemoteBrowser({
   const navigate = useUi((state) => state.navigate)
   const viewMode = useUi((state) => state.viewMode)
   const setPaneOpen = useUi((state) => state.setPaneOpen)
+  const openPreview = useUi((state) => state.openPreview)
   const [receiving, setReceiving] = useState(false)
+
+  useQuickLook(
+    useMemo(
+      () => ({ kind: 'remote' as const, deviceId, shareId, directory: path }),
+      [deviceId, shareId, path]
+    ),
+    entries
+  )
 
   onCount(entries?.length ?? null)
 
@@ -272,7 +282,12 @@ function RemoteBrowser({
   const open = (entry: DirEntry): void => {
     if (entry.kind === 'directory') {
       navigate({ kind: 'device', deviceId, shareId, path: joinRemote(path, entry.name) })
+      return
     }
+
+    // A file cannot be opened on this machine — it is not here. Previewing is the nearest
+    // honest equivalent of Finder's double-click.
+    openPreview({ kind: 'remote', deviceId, shareId, directory: path }, entries ?? [], entry.name)
   }
 
   /** Dropping local files here uploads them, but only into a share marked writable. */
@@ -351,6 +366,12 @@ function LocalBrowser({
   const { data: listing, isLoading, error } = useLocalDirectory(path)
   const navigate = useUi((state) => state.navigate)
   const viewMode = useUi((state) => state.viewMode)
+  const openPreview = useUi((state) => state.openPreview)
+
+  useQuickLook(
+    useMemo(() => ({ kind: 'local' as const, directory: path }), [path]),
+    listing?.entries
+  )
 
   onCount(listing?.entries.length ?? null)
 
@@ -369,7 +390,12 @@ function LocalBrowser({
   }
 
   const open = (entry: DirEntry): void => {
-    if (entry.kind === 'directory') navigate({ kind: 'local', path: `${path}/${entry.name}` })
+    if (entry.kind === 'directory') {
+      navigate({ kind: 'local', path: `${path}/${entry.name}` })
+      return
+    }
+
+    openPreview({ kind: 'local', directory: path }, listing?.entries ?? [], entry.name)
   }
 
   return viewMode === 'list' ? (

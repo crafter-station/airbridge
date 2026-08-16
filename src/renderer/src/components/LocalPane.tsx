@@ -69,7 +69,7 @@ export function LocalPane(): React.JSX.Element {
           title="Up one folder"
           disabled={!listing?.parent}
           onClick={() => listing?.parent && setPanePath(listing.parent)}
-          className="rounded p-1 text-(--color-ink-muted) hover:bg-black/5 disabled:opacity-30"
+          className="rounded p-1 text-(--color-ink-muted) hover:bg-(--color-hover) disabled:opacity-30"
         >
           <ChevronIcon className="h-3.5 w-3.5 -rotate-90" />
         </button>
@@ -98,8 +98,8 @@ export function LocalPane(): React.JSX.Element {
             }}
             className={`flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11px] ${
               dropTarget === place.path
-                ? 'bg-(--color-accent) text-white'
-                : 'text-(--color-ink-muted) hover:bg-black/5'
+                ? 'bg-(--color-accent) text-(--color-on-accent)'
+                : 'text-(--color-ink-muted) hover:bg-(--color-hover)'
             }`}
           >
             <PlaceIcon icon={place.icon} className="h-3.5 w-3.5" />
@@ -169,13 +169,13 @@ export function LocalPane(): React.JSX.Element {
                     void copyInto(path, event)
                   }}
                   className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] ${
-                    dropTarget === path ? 'bg-(--color-accent) text-white' : 'hover:bg-black/5'
+                    dropTarget === path ? 'bg-(--color-accent) text-(--color-on-accent)' : 'hover:bg-(--color-hover)'
                   }`}
                 >
                   {isFolder ? (
                     <FolderIcon
                       className={`h-4 w-4 shrink-0 ${
-                        dropTarget === path ? 'text-white' : 'text-(--color-accent)'
+                        dropTarget === path ? 'text-(--color-on-accent)' : 'text-(--color-accent)'
                       }`}
                     />
                   ) : (

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 
 import { Browser } from './components/Browser'
 import { LocalPane } from './components/LocalPane'
+import { Preview } from './components/Preview'
 import { Sidebar } from './components/Sidebar'
 import { useLocalRefresh, usePeerEvents } from './queries'
 import { StatusBar } from './components/StatusBar'
@@ -40,7 +41,7 @@ function Shell(): React.JSX.Element {
       <div className="flex min-h-0 flex-1">
         <Sidebar />
 
-        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-white">
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-(--color-surface)">
           <Browser onCount={setItemCount} />
         </main>
 
@@ -48,6 +49,7 @@ function Shell(): React.JSX.Element {
       </div>
 
       <StatusBar itemCount={itemCount} />
+      <Preview />
     </div>
   )
 }
@@ -62,6 +64,9 @@ function useKeyboardShortcuts(): void {
 
       // Never steal a key from a text field the user is typing in.
       if (event.target instanceof HTMLInputElement) return
+
+      // The preview panel owns the keyboard while it is open, including Escape.
+      if (useUi.getState().preview) return
 
       if (event.key === 'Escape') return clearSelection()
 

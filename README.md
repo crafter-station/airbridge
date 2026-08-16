@@ -21,6 +21,19 @@ pushes changes so the other window updates without a refresh. Copying drags betw
 panes rather than out to Finder, because Electron cannot start an OS drag for a file that is
 still on the far machine.
 
+The window follows your system appearance. There is no theme switch, deliberately — the OS
+already has one.
+
+## Preview
+
+Double-click a file, or select it and press **Space**. ← and → step through the folder; **Esc**
+closes.
+
+Images, video, audio, PDFs and text all render in place. Nothing is downloaded to do it: media
+elements are pointed at an internal protocol that forwards byte-range requests to the other
+machine, so a 4GB video opens as fast as a 4KB one and seeking fetches only the window around
+the playhead. Text is capped at 256KB, because a `.log` can be enormous.
+
 ## Building
 
 ```sh
@@ -31,6 +44,10 @@ pnpm package:dir    # unpacked build, faster, for checking it runs
 macOS builds have to be made on a Mac — electron-builder cannot produce a `.dmg` from Windows.
 
 ## Development
+
+Needs **pnpm 11** — the lockfile and `pnpm-workspace.yaml` use fields pnpm 9 rejects. The
+version is pinned in `package.json`, so `corepack pnpm …` fetches the right one without
+touching your global install.
 
 ```sh
 pnpm install

@@ -103,6 +103,20 @@ for (const step of steps) {
         return true
       })()
     `)
+  } else if (kind === 'dbltext') {
+    // Rows in the list view are <tr>, not buttons, and open on double-click.
+    await evaluate(`
+      (() => {
+        const wanted = ${JSON.stringify(argument)}
+        const element = [...document.querySelectorAll('tr, li, button')]
+          .find((candidate) => candidate.textContent.includes(wanted))
+        if (!element) throw new Error('no element containing ' + wanted)
+        element.dispatchEvent(
+          new MouseEvent('dblclick', { bubbles: true, cancelable: true, detail: 2 })
+        )
+        return true
+      })()
+    `)
   } else if (kind === 'dblclick') {
     await evaluate(`
       (() => {
@@ -114,6 +128,12 @@ for (const step of steps) {
     `)
   } else if (kind === 'wait') {
     await waitFor(`Boolean(document.querySelector(${JSON.stringify(argument)}))`)
+  } else if (kind === 'media') {
+    // Force prefers-color-scheme for the renderer, so both palettes can be checked without
+    // changing the machine's own appearance setting.
+    await send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-color-scheme', value: argument }]
+    })
   } else if (kind === 'sleep') {
     await sleep(Number(argument))
   } else if (kind === 'eval') {
@@ -128,7 +148,12 @@ for (const step of steps) {
   await sleep(350)
 }
 
-const { data } = await send('Page.captureScreenshot', { format: 'png' })
+// A window sitting behind the terminal is marked occluded, and an occluded window stops
+// committing frames — so a surface capture waits for one that never comes. Capturing from
+// the renderer instead does not care whether anything is visible.
+await send('Page.enable')
+
+const { data } = await send('Page.captureScreenshot', { format: 'png', fromSurface: false })
 const { writeFileSync } = await import('node:fs')
 writeFileSync(output, Buffer.from(data, 'base64'))
 console.log(`saved ${output}`)

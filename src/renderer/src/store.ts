@@ -1,7 +1,21 @@
 import { create } from 'zustand'
 
+import type { DirEntry } from '@shared/types'
+
 export type ViewMode = 'list' | 'icon'
 export type SortKey = 'name' | 'mtime' | 'size' | 'kind'
+
+/** Where a previewed file lives, which is all the panel needs to build its URL. */
+export type PreviewSource =
+  | { kind: 'remote'; deviceId: string; shareId: string; directory: string }
+  | { kind: 'local'; directory: string }
+
+export interface PreviewState {
+  source: PreviewSource
+  /** The whole folder listing, so ← and → can step through it without refetching. */
+  entries: DirEntry[]
+  index: number
+}
 
 /**
  * Where the main pane is pointed.
@@ -28,6 +42,8 @@ interface UiState {
   paneOpen: boolean
   panePath: string | null
 
+  preview: PreviewState | null
+
   navigate: (location: Location) => void
   back: () => void
   forward: () => void
@@ -43,6 +59,10 @@ interface UiState {
 
   setPaneOpen: (open: boolean) => void
   setPanePath: (path: string) => void
+
+  openPreview: (source: PreviewSource, entries: DirEntry[], name: string) => void
+  closePreview: () => void
+  stepPreview: (delta: number) => void
 }
 
 export const useUi = create<UiState>((set, get) => ({
@@ -58,6 +78,8 @@ export const useUi = create<UiState>((set, get) => ({
   paneOpen: false,
   panePath: null,
 
+  preview: null,
+
   navigate: (location) =>
     set((state) => {
       const history = [...state.history.slice(0, state.historyIndex + 1), location]
@@ -65,7 +87,9 @@ export const useUi = create<UiState>((set, get) => ({
         location,
         history,
         historyIndex: history.length - 1,
-        selection: new Set()
+        selection: new Set(),
+        // A preview belongs to the folder it was opened from.
+        preview: null
       }
     }),
 
@@ -73,14 +97,24 @@ export const useUi = create<UiState>((set, get) => ({
     set((state) => {
       if (state.historyIndex === 0) return state
       const historyIndex = state.historyIndex - 1
-      return { historyIndex, location: state.history[historyIndex], selection: new Set() }
+      return {
+        historyIndex,
+        location: state.history[historyIndex],
+        selection: new Set(),
+        preview: null
+      }
     }),
 
   forward: () =>
     set((state) => {
       if (state.historyIndex >= state.history.length - 1) return state
       const historyIndex = state.historyIndex + 1
-      return { historyIndex, location: state.history[historyIndex], selection: new Set() }
+      return {
+        historyIndex,
+        location: state.history[historyIndex],
+        selection: new Set(),
+        preview: null
+      }
     }),
 
   canGoBack: () => get().historyIndex > 0,
@@ -111,5 +145,32 @@ export const useUi = create<UiState>((set, get) => ({
     ),
 
   setPaneOpen: (paneOpen) => set({ paneOpen }),
-  setPanePath: (panePath) => set({ panePath })
+  setPanePath: (panePath) => set({ panePath }),
+
+  openPreview: (source, entries, name) => {
+    // Only files are previewable, so folders are dropped from the list the arrow keys walk —
+    // otherwise stepping lands on something with nothing to show.
+    const files = entries.filter((entry) => entry.kind === 'file')
+    const index = files.findIndex((entry) => entry.name === name)
+    if (index === -1) return
+
+    set({ preview: { source, entries: files, index } })
+  },
+
+  closePreview: () => set({ preview: null }),
+
+  stepPreview: (delta) =>
+    set((state) => {
+      if (!state.preview) return state
+
+      const index = state.preview.index + delta
+      if (index < 0 || index >= state.preview.entries.length) return state
+
+      return {
+        preview: { ...state.preview, index },
+        // Keep the selection under the panel in step, so closing it leaves the highlight on
+        // whatever was last looked at.
+        selection: new Set([state.preview.entries[index].name])
+      }
+    })
 }))

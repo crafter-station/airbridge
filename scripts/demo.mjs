@@ -35,20 +35,36 @@ function makeFixture() {
   mkdirSync(join(root, 'Notes'))
   mkdirSync(join(root, 'Notes', 'Drafts'))
 
-  const files = [
-    ['Quarterly report.pdf', 2_400_000],
-    ['budget.csv', 18_400],
-    ['logo.svg', 4_200],
-    ['demo recording.mp4', 148_000_000],
-    ['Screenshots/window.png', 890_000],
-    ['Screenshots/sidebar.png', 640_000],
-    ['Notes/meeting.md', 3_100],
-    ['Notes/Drafts/proposal.md', 9_800]
-  ]
+  // Real bytes where the preview panel needs them, filler where only the size matters.
+  const icon = readFileSync(join(PROJECT, 'build', 'icon.png'))
+  writeFileSync(join(root, 'Screenshots', 'logo.png'), icon)
+  writeFileSync(join(root, 'Screenshots', 'logo-copy.png'), icon)
 
-  for (const [name, size] of files) {
-    writeFileSync(join(root, name), Buffer.alloc(size, 1))
-  }
+  writeFileSync(
+    join(root, 'Notes', 'meeting.md'),
+    [
+      '# Weekly sync',
+      '',
+      '- Ship the preview panel',
+      '- Check the dark palette against Finder',
+      '- Ask about signing before the next build',
+      '',
+      'Large files stream through the preview protocol, so opening a video does not copy it.'
+    ].join('\n')
+  )
+
+  writeFileSync(
+    join(root, 'budget.csv'),
+    ['item,cost,notes', 'apple dev account,99,per year', 'code signing cert,180,per year'].join(
+      '\n'
+    )
+  )
+
+  writeFileSync(join(root, 'Notes', 'Drafts', 'proposal.md'), '# Draft\n\nStill thinking.\n')
+
+  // Deliberately huge, to prove the preview opens without pulling it across.
+  writeFileSync(join(root, 'demo recording.mp4'), Buffer.alloc(148_000_000, 1))
+  writeFileSync(join(root, 'Quarterly report.pdf'), Buffer.alloc(2_400_000, 1))
 
   return root
 }

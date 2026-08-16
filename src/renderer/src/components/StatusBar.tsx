@@ -23,7 +23,7 @@ export function StatusBar({ itemCount }: { itemCount: number | null }): React.JS
 
       {active.length > 0 && (
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <div className="h-1 w-28 shrink-0 overflow-hidden rounded-full bg-black/10">
+          <div className="h-1 w-28 shrink-0 overflow-hidden rounded-full bg-(--color-pressed)">
             <div
               className="h-full rounded-full bg-(--color-accent) transition-[width] duration-200"
               style={{ width: `${Math.round(fraction * 100)}%` }}
@@ -38,7 +38,7 @@ export function StatusBar({ itemCount }: { itemCount: number | null }): React.JS
           <button
             type="button"
             onClick={() => active.forEach((job) => void window.airbridge.transfers.cancel(job.id))}
-            className="shrink-0 rounded px-1.5 py-0.5 hover:bg-black/5"
+            className="shrink-0 rounded px-1.5 py-0.5 hover:bg-(--color-hover)"
           >
             Cancel
           </button>
@@ -47,11 +47,11 @@ export function StatusBar({ itemCount }: { itemCount: number | null }): React.JS
 
       {active.length === 0 && failed.length > 0 && (
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate text-red-600">{failed[failed.length - 1].error}</span>
+          <span className="truncate text-(--color-danger)">{failed[failed.length - 1].error}</span>
           <button
             type="button"
             onClick={() => void window.airbridge.transfers.clear()}
-            className="shrink-0 rounded px-1.5 py-0.5 hover:bg-black/5"
+            className="shrink-0 rounded px-1.5 py-0.5 hover:bg-(--color-hover)"
           >
             Dismiss
           </button>

@@ -120,7 +120,7 @@ function Crumbs({
           <button
             type="button"
             onClick={part.onClick}
-            className={`truncate rounded px-1 py-0.5 hover:bg-black/5 ${
+            className={`truncate rounded px-1 py-0.5 hover:bg-(--color-hover) ${
               index === parts.length - 1 ? 'font-medium' : 'text-(--color-ink-muted)'
             }`}
           >
@@ -150,7 +150,7 @@ function IconButton({
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
-      className="rounded-md p-1.5 text-(--color-ink-muted) hover:bg-black/5 disabled:pointer-events-none disabled:opacity-30"
+      className="rounded-md p-1.5 text-(--color-ink-muted) hover:bg-(--color-hover) disabled:pointer-events-none disabled:opacity-30"
     >
       {children}
     </button>
@@ -176,7 +176,7 @@ function SegmentedButton({
       aria-pressed={active}
       onClick={onClick}
       className={`rounded-md p-1.5 ${
-        active ? 'bg-black/10 text-(--color-ink)' : 'text-(--color-ink-muted) hover:bg-black/5'
+        active ? 'bg-(--color-pressed) text-(--color-ink)' : 'text-(--color-ink-muted) hover:bg-(--color-hover)'
       }`}
     >
       {children}

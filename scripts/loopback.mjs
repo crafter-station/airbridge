@@ -212,6 +212,20 @@ try {
     )
 
     check('a change on the host reached the guest unprompted', detail.liveEvent === true)
+
+    // Previewing must serve a window of bytes, not the whole file — that is what keeps a
+    // large video instant.
+    check(
+      'the preview protocol answers a byte range with 206',
+      detail.previewRange?.status === 206,
+      JSON.stringify(detail.previewRange)
+    )
+    check(
+      'and returns only the bytes asked for',
+      detail.previewRange?.bytes === 100 &&
+        detail.previewRange?.contentRange === 'bytes 1000-1099/2048',
+      JSON.stringify(detail.previewRange)
+    )
   }
 } finally {
   guest?.kill()

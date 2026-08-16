@@ -17,7 +17,7 @@ function relaxCspForDev(): Plugin {
     transformIndexHtml: (html) =>
       html.replace(
         /<meta http-equiv="Content-Security-Policy"[^>]*>/,
-        `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: http: https:">`
+        `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: airbridge:; media-src airbridge:; frame-src airbridge:; connect-src 'self' ws: http: https: airbridge:">`
       )
   }
 }

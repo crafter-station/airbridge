@@ -77,6 +77,28 @@ Vertical slice first — the risk is in transport and discovery, not CSS.
 - [x] **M6 — Write + ship.** Per-share write toggle, upload/delete, CSP and sandbox hardening, app
       icon, unsigned packaged builds for both OSes.
 
+## After v1
+
+- [x] **System appearance.** Light and dark palettes as plain custom properties, swapped by
+      `prefers-color-scheme`. No switch in the app: the OS already has one. The main process
+      repaints the Windows title-bar overlay and the window background, which the OS draws and
+      CSS cannot reach.
+- [x] **Preview.** Space or double-click opens a Quick Look-style panel; ← and → step through
+      the folder. Images, video, audio, PDF and text, none of which are downloaded to display.
+
+### Why previewing needed a protocol
+
+The renderer holds no token, presents no certificate, and its content policy forbids outside
+connections — so it cannot fetch from a peer. Previews go through an `airbridge://` protocol
+handled in the main process, which attaches the credentials and forwards the request. The URL
+carries only identifiers.
+
+Byte ranges pass through in both directions rather than being absorbed. That is the whole
+reason a large video opens instantly: the media element asks for the header, then for a window
+around wherever you drag the scrubber, and nothing is ever written to disk. Measured at 6ms to
+pull 64KB out of the middle of a 148MB file; the loopback suite asserts the 206 and the exact
+byte count so it cannot silently regress into downloading everything.
+
 ## Decisions
 
 Recorded from the design interview, with the reasoning that survives the choice.

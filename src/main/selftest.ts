@@ -1,7 +1,8 @@
-import { app } from 'electron'
+import { app, net } from 'electron'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import { remotePreviewUrl } from '@shared/preview'
 import type { DirEntry, TransferJob } from '@shared/types'
 import { pairWith, resolvePeer } from './devices'
 import { downloadFile, listPeerDirectory, listPeerShares, PART_SUFFIX } from './peer'
@@ -56,9 +57,11 @@ export async function runSelfTest(target: string): Promise<void> {
       destination
     )
 
+    const previewRange = await verifyPreviewStream(device.deviceId, share.id)
     const liveEvent = await watchForChange()
 
     report('SELFTEST_OK', {
+      previewRange,
       liveEvent,
       pairedWith: device.deviceName,
       deviceId: device.deviceId,
@@ -76,6 +79,29 @@ export async function runSelfTest(target: string): Promise<void> {
     })
   } catch (cause) {
     report('SELFTEST_FAIL', { error: cause instanceof Error ? cause.message : String(cause) })
+  }
+}
+
+/**
+ * Prove the preview protocol serves a window out of the middle of a remote file.
+ *
+ * This is the whole basis of previewing a large video quickly: the media element asks for the
+ * bytes around wherever the scrubber is, and gets them without the file being copied. If this
+ * ever answers 200 with the whole body, previews still *work* — they just quietly start
+ * downloading gigabytes, which is the kind of regression nobody notices until they do.
+ */
+async function verifyPreviewStream(
+  deviceId: string,
+  shareId: string
+): Promise<{ status: number; bytes: number; contentRange: string | null }> {
+  const response = await net.fetch(remotePreviewUrl(deviceId, shareId, 'nested/deep.bin'), {
+    headers: { range: 'bytes=1000-1099' }
+  })
+
+  return {
+    status: response.status,
+    bytes: (await response.arrayBuffer()).byteLength,
+    contentRange: response.headers.get('content-range')
   }
 }
 

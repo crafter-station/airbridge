@@ -114,35 +114,35 @@ export function ListView({ entries, onOpen, onDragEntries }: FileViewProps): Rea
               onClick={(event) => toggleSelected(entry.name, event.metaKey || event.ctrlKey)}
               onDoubleClick={() => onOpen(entry)}
               className={`cursor-default select-none ${
-                isSelected ? 'bg-(--color-accent) text-white' : 'odd:bg-black/[0.02]'
+                isSelected ? 'bg-(--color-accent) text-(--color-on-accent)' : 'odd:bg-(--color-stripe)'
               }`}
             >
               <td className="flex items-center gap-2 px-3 py-[5px]">
                 {entry.kind === 'directory' ? (
                   <FolderIcon
-                    className={`h-4 w-4 shrink-0 ${isSelected ? 'text-white' : 'text-(--color-accent)'}`}
+                    className={`h-4 w-4 shrink-0 ${isSelected ? 'text-(--color-on-accent)' : 'text-(--color-accent)'}`}
                   />
                 ) : (
                   <FileIcon
-                    className={`h-4 w-4 shrink-0 ${isSelected ? 'text-white' : 'text-(--color-ink-muted)'}`}
+                    className={`h-4 w-4 shrink-0 ${isSelected ? 'text-(--color-on-accent)' : 'text-(--color-ink-muted)'}`}
                   />
                 )}
                 <span className="truncate">{entry.name}</span>
               </td>
               <td
-                className={`px-3 ${isSelected ? 'text-white/80' : 'text-(--color-ink-muted)'}`}
+                className={`px-3 ${isSelected ? 'text-(--color-on-accent)/80' : 'text-(--color-ink-muted)'}`}
               >
                 {formatDate(entry.mtime)}
               </td>
               <td
                 className={`px-3 text-right tabular-nums ${
-                  isSelected ? 'text-white/80' : 'text-(--color-ink-muted)'
+                  isSelected ? 'text-(--color-on-accent)/80' : 'text-(--color-ink-muted)'
                 }`}
               >
                 {entry.kind === 'directory' ? '--' : formatBytes(entry.size)}
               </td>
               <td
-                className={`truncate px-3 ${isSelected ? 'text-white/80' : 'text-(--color-ink-muted)'}`}
+                className={`truncate px-3 ${isSelected ? 'text-(--color-on-accent)/80' : 'text-(--color-ink-muted)'}`}
               >
                 {describeKind(entry.name, entry.kind === 'directory')}
               </td>
@@ -217,7 +217,7 @@ export function IconView({ entries, onOpen, onDragEntries }: FileViewProps): Rea
               )}
               <span
                 className={`line-clamp-2 rounded px-1.5 py-0.5 text-center text-[12px] ${
-                  isSelected ? 'bg-(--color-accent) text-white' : ''
+                  isSelected ? 'bg-(--color-accent) text-(--color-on-accent)' : ''
                 }`}
               >
                 {entry.name}
