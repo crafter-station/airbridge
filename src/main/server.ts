@@ -1,14 +1,16 @@
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify'
 import { createReadStream } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
+import type { TLSSocket } from 'node:tls'
 
-import type { DirEntry } from '@shared/types'
-import { getAccessToken } from './auth'
+import type { DirEntry, PairRequest } from '@shared/types'
 import { getCertificate } from './cert'
 import { getDeviceId, getDeviceName } from './identity'
 import { isRealPathInside, resolveInside } from './paths'
+import { handlePairRequest, PairingError } from './pairing'
 import { getShare, listPublicShares } from './shares'
+import { findByInboundToken, rememberAddress } from './trust'
 
 /** Fixed so a person can type it, with room to climb when it is taken — which is exactly
  *  what happens when a second instance is started for loopback testing. */
@@ -100,67 +102,116 @@ async function readDirectory(directory: string): Promise<DirEntry[]> {
     })
 }
 
+/** The fingerprint of the certificate the caller presented on this connection, if any. */
+function clientFingerprint(request: FastifyRequest): string | null {
+  const certificate = (request.socket as TLSSocket).getPeerX509Certificate?.()
+  return certificate?.fingerprint256 ?? null
+}
+
 function buildServer(certificate: { key: string; cert: string }): FastifyInstance {
   const server = Fastify({
-    https: { key: certificate.key, cert: certificate.cert },
+    https: {
+      key: certificate.key,
+      cert: certificate.cert,
+      // Ask every client for a certificate but do not require a CA chain: peers are all
+      // self-signed. The certificate is checked against the pinned fingerprint by hand.
+      requestCert: true,
+      rejectUnauthorized: false
+    },
     logger: false
   })
 
-  server.addHook('onRequest', async (request, reply) => {
-    if (request.headers.authorization !== `Bearer ${getAccessToken()}`) {
-      await reply.code(401).send({ error: 'Unauthorized' })
+  // Pairing is the one thing an unknown device may do, so it sits outside the authenticated
+  // plugin below rather than being special-cased inside the auth hook.
+  server.post<{ Body: PairRequest }>('/pair', async (request, reply) => {
+    try {
+      return await handlePairRequest(
+        request.body,
+        clientFingerprint(request),
+        request.socket.remoteAddress ?? '',
+        request.socket.remotePort ?? 0
+      )
+    } catch (cause) {
+      if (cause instanceof PairingError) {
+        return reply.code(cause.status).send({ error: cause.message })
+      }
+      throw cause
     }
   })
 
-  /** Who we are. Lets a peer confirm it reached the machine it meant to before pairing. */
-  server.get('/identity', async () => ({
-    deviceId: getDeviceId(),
-    deviceName: getDeviceName()
-  }))
+  void server.register(async (authenticated) => {
+    authenticated.addHook('onRequest', async (request, reply) => {
+      const header = request.headers.authorization ?? ''
+      const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : ''
+      const device = token ? findByInboundToken(token) : undefined
 
-  server.get('/shares', async () => ({ shares: listPublicShares() }))
-
-  server.get<{ Params: ShareParams; Querystring: PathQuery }>(
-    '/shares/:id/list',
-    async (request, reply) => {
-      const located = locate(request.params.id, request.query.path)
-      if (!located.ok) return reply.code(located.status).send({ error: located.error })
-
-      const stats = await stat(located.target).catch(() => null)
-      if (!stats?.isDirectory()) return reply.code(404).send({ error: 'Not a directory' })
-
-      return { entries: await readDirectory(located.target) }
-    }
-  )
-
-  server.get<{ Params: ShareParams; Querystring: PathQuery }>(
-    '/shares/:id/file',
-    async (request, reply) => {
-      const located = locate(request.params.id, request.query.path)
-      if (!located.ok) return reply.code(located.status).send({ error: located.error })
-
-      const stats = await stat(located.target).catch(() => null)
-      if (!stats?.isFile()) return reply.code(404).send({ error: 'Not a file' })
-
-      const name = basename(located.target)
-      reply.header('accept-ranges', 'bytes')
-      reply.header('content-type', 'application/octet-stream')
-      reply.header('last-modified', new Date(stats.mtimeMs).toUTCString())
-      reply.header('content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}`)
-
-      const range = parseRange(request.headers.range, stats.size)
-
-      if (range) {
-        reply.code(206)
-        reply.header('content-range', `bytes ${range.start}-${range.end}/${stats.size}`)
-        reply.header('content-length', range.end - range.start + 1)
-        return reply.send(createReadStream(located.target, { start: range.start, end: range.end }))
+      // Two independent facts: a token we issued, and the key we pinned when we issued it.
+      // A stolen token alone gets nowhere, because the thief cannot present the certificate.
+      if (!device || clientFingerprint(request) !== device.fingerprint) {
+        await reply.code(401).send({ error: 'Unauthorized' })
+        return
       }
 
-      reply.header('content-length', stats.size)
-      return reply.send(createReadStream(located.target))
-    }
-  )
+      if (request.socket.remoteAddress) {
+        rememberAddress(device.deviceId, request.socket.remoteAddress, device.lastPort ?? 0)
+      }
+    })
+
+    /** Who we are. Lets a peer confirm it reached the machine it meant to. */
+    authenticated.get('/identity', async () => ({
+      deviceId: getDeviceId(),
+      deviceName: getDeviceName()
+    }))
+
+    authenticated.get('/shares', async () => ({ shares: listPublicShares() }))
+
+    authenticated.get<{ Params: ShareParams; Querystring: PathQuery }>(
+      '/shares/:id/list',
+      async (request, reply) => {
+        const located = locate(request.params.id, request.query.path)
+        if (!located.ok) return reply.code(located.status).send({ error: located.error })
+
+        const stats = await stat(located.target).catch(() => null)
+        if (!stats?.isDirectory()) return reply.code(404).send({ error: 'Not a directory' })
+
+        return { entries: await readDirectory(located.target) }
+      }
+    )
+
+    authenticated.get<{ Params: ShareParams; Querystring: PathQuery }>(
+      '/shares/:id/file',
+      async (request, reply) => {
+        const located = locate(request.params.id, request.query.path)
+        if (!located.ok) return reply.code(located.status).send({ error: located.error })
+
+        const stats = await stat(located.target).catch(() => null)
+        if (!stats?.isFile()) return reply.code(404).send({ error: 'Not a file' })
+
+        const name = basename(located.target)
+        reply.header('accept-ranges', 'bytes')
+        reply.header('content-type', 'application/octet-stream')
+        reply.header('last-modified', new Date(stats.mtimeMs).toUTCString())
+        reply.header(
+          'content-disposition',
+          `attachment; filename*=UTF-8''${encodeURIComponent(name)}`
+        )
+
+        const range = parseRange(request.headers.range, stats.size)
+
+        if (range) {
+          reply.code(206)
+          reply.header('content-range', `bytes ${range.start}-${range.end}/${stats.size}`)
+          reply.header('content-length', range.end - range.start + 1)
+          return reply.send(
+            createReadStream(located.target, { start: range.start, end: range.end })
+          )
+        }
+
+        reply.header('content-length', stats.size)
+        return reply.send(createReadStream(located.target))
+      }
+    )
+  })
 
   return server
 }

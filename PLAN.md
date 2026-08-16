@@ -39,6 +39,12 @@ Every route except `/pair` requires `Authorization: Bearer`. Every `path` is res
 to sit inside the share root before any I/O. The client pins the cert fingerprint recorded at
 pairing; a mismatch is a hard failure, never a re-prompt.
 
+Connections are mutually authenticated. Every peer presents its own certificate, and the server
+checks that the certificate on the connection is the one pinned for the token's owner — so a
+stolen token alone gets nowhere. `/pair` relies on the same thing: the fingerprint in the request
+body is only a claim, and the fingerprint is broadcast in the mDNS record, so anyone on the
+network could assert it. Only the machine holding the private key can present it.
+
 ## Transfers
 
 Folders copy recursively, four files at a time. Each file streams to `name.airbridge-part` and is
@@ -62,7 +68,7 @@ Vertical slice first — the risk is in transport and discovery, not CSS.
 - [x] **M0 — Scaffold.** electron-vite + React + TS + pnpm, tray/menu bar, builds on both platforms.
 - [x] **M1 — Server.** Publish a folder, list and stream it over HTTPS, hardcoded trust. Two
       instances on Windows, different ports.
-- [ ] **M2 — Discovery + pairing.** mDNS with adapter filtering, approval dialog, UUID+fingerprint
+- [x] **M2 — Discovery + pairing.** mDNS with adapter filtering, approval dialog, UUID+fingerprint
       trust store, Connect-by-IP fallback. *First real Mac smoke test lands here.*
 - [ ] **M3 — Transfers.** Recursive folder copy, `.part` + atomic rename, Range resume, collisions,
       progress.

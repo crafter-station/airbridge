@@ -6,7 +6,18 @@ import { basename, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import type { TLSSocket } from 'node:tls'
 
-import type { DirEntry, DownloadResult, PeerAddress, PeerShares, PublicShare } from '@shared/types'
+import { PROTOCOL_VERSION } from '@shared/protocol'
+import type {
+  DirEntry,
+  DownloadResult,
+  PairRequest,
+  PairResponse,
+  PeerAddress,
+  PeerShares,
+  PublicShare
+} from '@shared/types'
+import { getCertificate } from './cert'
+import { getDeviceId, getDeviceName } from './identity'
 
 /** Suffix for a transfer still in flight. A killed download must never leave behind a file
  *  that looks complete — the rename to the real name is the commit. */
@@ -24,15 +35,28 @@ interface RequestOptions {
   path: string
   method?: string
   headers?: Record<string, string>
+  body?: unknown
 }
 
-function peerRequest(peer: PeerAddress, options: RequestOptions): Promise<PeerResponse> {
+async function peerRequest(
+  peer: Omit<PeerAddress, 'token'> & { token?: string },
+  options: RequestOptions
+): Promise<PeerResponse> {
+  // We present our own certificate on every call, not just when pairing: it is what proves
+  // to the far side that the bearer token is being used by the machine it was issued to.
+  const identity = await getCertificate()
+
+  const payload =
+    options.body === undefined ? null : Buffer.from(JSON.stringify(options.body), 'utf8')
+
   return new Promise((settle, fail) => {
     const request = httpsRequest({
       host: peer.host,
       port: peer.port,
       path: options.path,
       method: options.method ?? 'GET',
+      key: identity.key,
+      cert: identity.cert,
       // Every airbridge certificate is self-signed, so chain validation would reject all of
       // them. Identity comes from the fingerprint check below instead — which is stricter
       // than a CA chain, since it names one specific machine.
@@ -40,7 +64,13 @@ function peerRequest(peer: PeerAddress, options: RequestOptions): Promise<PeerRe
       // TODO(M3): a keep-alive agent per peer. Fresh sockets keep the handshake check below
       // trivially correct, but cost a TLS round trip per file during a recursive copy.
       agent: false,
-      headers: { authorization: `Bearer ${peer.token}`, ...options.headers }
+      headers: {
+        ...(peer.token ? { authorization: `Bearer ${peer.token}` } : {}),
+        ...(payload
+          ? { 'content-type': 'application/json', 'content-length': payload.byteLength }
+          : {}),
+        ...options.headers
+      }
     })
 
     let fingerprint = ''
@@ -79,6 +109,7 @@ function peerRequest(peer: PeerAddress, options: RequestOptions): Promise<PeerRe
       })
     )
 
+    if (payload) request.write(payload)
     request.end()
   })
 }
@@ -116,6 +147,31 @@ export async function fetchPeerIdentity(
   const response = await peerRequest(peer, { path: '/identity' })
   const identity = await readJson<{ deviceId: string; deviceName: string }>(response)
   return { ...identity, fingerprint: response.fingerprint }
+}
+
+/**
+ * Ask a device to pair, and wait while a person on the other end decides.
+ *
+ * `grantToken` travels outward in the request body: pairing is mutual in a single approval,
+ * so we hand them a token to call us with at the same moment they hand us one.
+ */
+export async function requestPairing(
+  address: { host: string; port: number },
+  grantToken: string
+): Promise<PairResponse & { fingerprint: string }> {
+  const identity = await getCertificate()
+
+  const body: PairRequest = {
+    deviceId: getDeviceId(),
+    deviceName: getDeviceName(),
+    fingerprint: identity.fingerprint,
+    protocolVersion: PROTOCOL_VERSION,
+    grantToken
+  }
+
+  const response = await peerRequest(address, { path: '/pair', method: 'POST', body })
+  const result = await readJson<PairResponse>(response)
+  return { ...result, fingerprint: response.fingerprint }
 }
 
 export async function listPeerShares(peer: PeerAddress): Promise<PeerShares> {

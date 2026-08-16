@@ -13,7 +13,9 @@
     "typecheck:node": "tsc -p tsconfig.node.json --noEmit",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
     "icons": "node scripts/generate-icons.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "loopback": "node scripts/loopback.mjs",
+    "test": "pnpm smoke && pnpm loopback"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
@@ -31,6 +33,7 @@
     "vite": "^5.4.0"
   },
   "dependencies": {
+    "bonjour-service": "^1.4.4",
     "fastify": "^5.12.0",
     "selfsigned": "^5.5.0"
   }

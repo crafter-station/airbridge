@@ -10,9 +10,19 @@ export const IPC = {
   sharesRemove: 'shares:remove',
   sharesSetWritable: 'shares:set-writable',
 
+  devicesList: 'devices:list',
+  devicesPair: 'devices:pair',
+  devicesUnpair: 'devices:unpair',
+
   peerShares: 'peer:shares',
   peerList: 'peer:list',
   peerDownload: 'peer:download'
+} as const
+
+/** Pushed from main to every window. The renderer subscribes rather than polling. */
+export const EVENTS = {
+  devices: 'event:devices',
+  shares: 'event:shares'
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

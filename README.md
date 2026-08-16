@@ -5,7 +5,8 @@ folder, and it's live — the other machine sees it in a Finder-like window and 
 
 No cloud, no accounts, no SMB configuration.
 
-> Status: **M0** — scaffold only. See [PLAN.md](./PLAN.md) for the design and milestones.
+> Status: **M2** — pairing and browsing work; the Finder UI lands in M4. See
+> [PLAN.md](./PLAN.md) for the design and milestones.
 
 ## Development
 
@@ -15,18 +16,33 @@ pnpm dev          # electron-vite dev server with HMR
 pnpm build        # typecheck + production bundle into out/
 pnpm preview      # run the production bundle
 pnpm typecheck
+pnpm test         # smoke + loopback (needs pnpm build first)
 pnpm icons        # regenerate the tray glyph PNGs into resources/
 ```
 
-### Running two instances on one machine
+## Tests
 
-The protocol needs two peers, so most of it can be tested without a second computer. The single
-instance lock is opt-out:
+Two suites, both driving real running instances rather than mocks.
 
-```sh
-AIRBRIDGE_ALLOW_MULTI=1 pnpm preview      # bash
-$env:AIRBRIDGE_ALLOW_MULTI=1; pnpm preview  # PowerShell
-```
+- **`pnpm smoke`** starts one instance and talks HTTPS at it as a second device, using a
+  certificate it generates itself. Covers auth, pairing rejections, listing, ranged streaming and
+  every path-containment case.
+- **`pnpm loopback`** starts *two* instances and has one pair with, browse and copy from the
+  other, then checks the bytes that landed on disk. This is the only way to exercise the client
+  half — pairing, certificate pinning, token exchange, streaming to disk — since it runs inside
+  the main process where a test harness has no reach.
+
+## Environment variables
+
+All development-only; the last two do nothing in a packaged build.
+
+| Variable | Effect |
+| --- | --- |
+| `AIRBRIDGE_DATA_DIR` | Use a specific userData directory. Two instances otherwise share one, giving them the same identity and certificate. |
+| `AIRBRIDGE_ALLOW_MULTI=1` | Skip the single-instance lock. |
+| `AIRBRIDGE_HEADLESS=1` | Start without showing a window. |
+| `AIRBRIDGE_AUTO_APPROVE=1` | Approve inbound pairing requests without prompting. Set this on the machine being *asked*. |
+| `AIRBRIDGE_SELFTEST_TARGET` | `host:port` — pair, browse and copy from that peer at startup, print the result, then quit. |
 
 ## Layout
 

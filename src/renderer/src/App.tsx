@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import type { DirEntry, PeerAddress, PublicShare, ServerStatus, Share } from '@shared/types'
+import type { DirEntry, KnownDevice, PublicShare, ServerStatus, Share } from '@shared/types'
 
 /**
- * M1 development console.
+ * M2 development console.
  *
- * Deliberately plain: its job is to exercise publish → discover → browse → copy end to end
- * so the transport can be trusted before the Finder shell is built on top of it in M4, which
- * replaces this file wholesale.
+ * Deliberately plain: its job is to exercise publish → discover → pair → browse → copy end
+ * to end so the transport can be trusted before the Finder shell is built on top of it in
+ * M4, which replaces this file wholesale.
  */
 export function App(): React.JSX.Element {
   return (
@@ -27,11 +27,7 @@ function LocalPanel(): React.JSX.Element {
     void window.airbridge.serverStatus().then(setStatus)
     void window.airbridge.shares.list().then(setShares)
     void window.airbridge.getAppInfo().then((info) => setDeviceName(info.deviceName))
-  }, [])
-
-  const addFolder = useCallback(async () => {
-    const added = await window.airbridge.shares.add()
-    if (added) setShares(await window.airbridge.shares.list())
+    return window.airbridge.shares.onChanged(setShares)
   }, [])
 
   return (
@@ -56,9 +52,6 @@ function LocalPanel(): React.JSX.Element {
               ))
             )}
           </Field>
-          <Field label="Token">
-            <span className="select-text font-mono break-all">{status.token}</span>
-          </Field>
           <Field label="Fingerprint">
             <span className="select-text font-mono text-[10px] break-all">
               {status.fingerprint}
@@ -69,12 +62,10 @@ function LocalPanel(): React.JSX.Element {
 
       <div className="flex items-center justify-between">
         <h3 className="font-semibold">Shared folders</h3>
-        <Button onClick={addFolder}>Add folder…</Button>
+        <Button onClick={() => void window.airbridge.shares.add()}>Add folder…</Button>
       </div>
 
-      {shares.length === 0 && (
-        <p className="text-(--color-ink-muted)">Nothing shared yet.</p>
-      )}
+      {shares.length === 0 && <p className="text-(--color-ink-muted)">Nothing shared yet.</p>}
 
       <ul className="flex flex-col gap-1.5">
         {shares.map((share) => (
@@ -97,20 +88,14 @@ function LocalPanel(): React.JSX.Element {
               <input
                 type="checkbox"
                 checked={share.writable}
-                onChange={async (event) =>
-                  setShares(
-                    await window.airbridge.shares.setWritable(share.id, event.target.checked)
-                  )
+                onChange={(event) =>
+                  void window.airbridge.shares.setWritable(share.id, event.target.checked)
                 }
               />
               Writable
             </label>
 
-            <Button
-              onClick={async () => setShares(await window.airbridge.shares.remove(share.id))}
-            >
-              Remove
-            </Button>
+            <Button onClick={() => void window.airbridge.shares.remove(share.id)}>Remove</Button>
           </li>
         ))}
       </ul>
@@ -119,15 +104,20 @@ function LocalPanel(): React.JSX.Element {
 }
 
 function RemotePanel(): React.JSX.Element {
-  const [form, setForm] = useState({ host: '127.0.0.1', port: '45790', token: '' })
-  const [peer, setPeer] = useState<PeerAddress | null>(null)
+  const [devices, setDevices] = useState<KnownDevice[]>([])
+  const [manual, setManual] = useState({ host: '', port: '45789' })
+  const [openDevice, setOpenDevice] = useState<KnownDevice | null>(null)
   const [shares, setShares] = useState<PublicShare[]>([])
-  const [fingerprint, setFingerprint] = useState('')
   const [openShare, setOpenShare] = useState<PublicShare | null>(null)
   const [path, setPath] = useState('')
   const [entries, setEntries] = useState<DirEntry[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    void window.airbridge.devices.list().then(setDevices)
+    return window.airbridge.devices.onChanged(setDevices)
+  }, [])
 
   const run = useCallback(async (work: () => Promise<void>) => {
     setBusy(true)
@@ -141,34 +131,36 @@ function RemotePanel(): React.JSX.Element {
     }
   }, [])
 
-  const connect = (): Promise<void> =>
+  const pair = (host: string, port: number): Promise<void> =>
     run(async () => {
-      const next: PeerAddress = {
-        host: form.host.trim(),
-        port: Number(form.port),
-        token: form.token.trim()
-      }
-      const result = await window.airbridge.peer.shares(next)
-      setPeer(next)
+      setMessage(`Waiting for ${host} to approve…`)
+      const device = await window.airbridge.devices.pair(host, port)
+      setMessage(`Paired with ${device.deviceName}`)
+      setDevices(await window.airbridge.devices.list())
+    })
+
+  const open = (device: KnownDevice): Promise<void> =>
+    run(async () => {
+      const result = await window.airbridge.peer.shares(device.deviceId)
+      setOpenDevice(device)
       setShares(result.shares)
-      setFingerprint(result.fingerprint)
       setOpenShare(null)
       setEntries([])
     })
 
   const browse = (share: PublicShare, nextPath: string): Promise<void> =>
     run(async () => {
-      if (!peer) return
-      setEntries(await window.airbridge.peer.list(peer, share.id, nextPath))
+      if (!openDevice) return
+      setEntries(await window.airbridge.peer.list(openDevice.deviceId, share.id, nextPath))
       setOpenShare(share)
       setPath(nextPath)
     })
 
   const download = (entry: DirEntry): Promise<void> =>
     run(async () => {
-      if (!peer || !openShare) return
+      if (!openDevice || !openShare) return
       const result = await window.airbridge.peer.download(
-        peer,
+        openDevice.deviceId,
         openShare.id,
         joinPath(path, entry.name)
       )
@@ -177,37 +169,73 @@ function RemotePanel(): React.JSX.Element {
 
   return (
     <section className="flex flex-col gap-4 overflow-y-auto p-6">
-      <h2 className="text-base font-semibold">Connect to a device</h2>
+      <h2 className="text-base font-semibold">Devices</h2>
 
-      <div className="flex flex-wrap items-end gap-2">
+      {devices.length === 0 && (
+        <p className="text-(--color-ink-muted)">
+          Nothing found yet. If the other machine is running airbridge, connect by address
+          below.
+        </p>
+      )}
+
+      <ul className="flex flex-col gap-1.5">
+        {devices.map((device) => (
+          <li
+            key={device.deviceId}
+            className="flex items-center gap-2 rounded-md border border-(--color-chrome-border) bg-white px-3 py-2"
+          >
+            <span
+              aria-hidden
+              className={`h-2 w-2 rounded-full ${device.online ? 'bg-green-500' : 'bg-gray-300'}`}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium">{device.deviceName}</div>
+              <div className="truncate text-xs text-(--color-ink-muted)">
+                {device.host ? `${device.host}:${device.port}` : 'address unknown'}
+              </div>
+            </div>
+
+            {device.paired ? (
+              <>
+                <Button onClick={() => void open(device)} disabled={busy || !device.host}>
+                  Browse
+                </Button>
+                <Button onClick={() => void window.airbridge.devices.unpair(device.deviceId)}>
+                  Unpair
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={() => void pair(device.host ?? '', device.port ?? 0)}
+                disabled={busy || !device.host}
+              >
+                Pair
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex flex-wrap items-end gap-2 border-t border-(--color-chrome-border) pt-4">
         <Input
-          label="Host"
-          value={form.host}
-          onChange={(host) => setForm({ ...form, host })}
-          className="w-32"
+          label="Connect by address"
+          value={manual.host}
+          onChange={(host) => setManual({ ...manual, host })}
+          className="w-36"
         />
         <Input
           label="Port"
-          value={form.port}
-          onChange={(port) => setForm({ ...form, port })}
+          value={manual.port}
+          onChange={(port) => setManual({ ...manual, port })}
           className="w-20"
         />
-        <Input
-          label="Token"
-          value={form.token}
-          onChange={(token) => setForm({ ...form, token })}
-          className="w-56"
-        />
-        <Button onClick={connect} disabled={busy}>
-          Connect
+        <Button
+          onClick={() => void pair(manual.host.trim(), Number(manual.port))}
+          disabled={busy || manual.host.trim() === ''}
+        >
+          Pair
         </Button>
       </div>
-
-      {fingerprint && (
-        <p className="text-[10px] text-(--color-ink-muted)">
-          Certificate <span className="select-text font-mono">{fingerprint}</span>
-        </p>
-      )}
 
       {message && (
         <p className="rounded-md bg-(--color-sidebar) px-3 py-2 text-xs select-text">{message}</p>
@@ -216,7 +244,7 @@ function RemotePanel(): React.JSX.Element {
       {shares.length > 0 && (
         <nav className="flex flex-wrap gap-1.5">
           {shares.map((share) => (
-            <Button key={share.id} onClick={() => browse(share, '')} disabled={!share.available}>
+            <Button key={share.id} onClick={() => void browse(share, '')} disabled={!share.available}>
               {share.name}
             </Button>
           ))}
@@ -297,7 +325,13 @@ function Breadcrumb({
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
+function Field({
+  label,
+  children
+}: {
+  label: string
+  children: React.ReactNode
+}): React.JSX.Element {
   return (
     <>
       <dt className="text-(--color-ink-muted)">{label}</dt>

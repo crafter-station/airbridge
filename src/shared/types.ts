@@ -47,9 +47,6 @@ export interface DirEntry {
 export interface ServerStatus {
   port: number | null
   fingerprint: string | null
-  /** Bearer token for this instance. Hard-coded trust for M1; replaced by per-device tokens
-   *  issued at pairing in M2. */
-  token: string | null
   addresses: NetworkAddress[]
 }
 
@@ -66,6 +63,65 @@ export interface PeerShares {
   shares: PublicShare[]
   /** The certificate we actually saw, for the caller to pin. */
   fingerprint: string
+}
+
+/** A device seen on the network right now. Presence says nothing about trust. */
+export interface DiscoveredPeer {
+  deviceId: string
+  deviceName: string
+  fingerprint: string
+  host: string
+  port: number
+  protocolVersion: number
+  paired: boolean
+}
+
+/**
+ * A device this machine has approved.
+ *
+ * Two tokens, because pairing is mutual in one approval: `inboundToken` is what we handed
+ * them to call us with, `outboundToken` is what they handed us. Revoking a device throws
+ * away both, and does not touch anyone else.
+ */
+export interface TrustedDevice {
+  deviceId: string
+  deviceName: string
+  /** Pinned at pairing. A device presenting a different certificate is refused outright. */
+  fingerprint: string
+  inboundToken: string
+  outboundToken: string
+  /** Where it was last reachable, used when mDNS has not found it yet. */
+  lastHost: string | null
+  lastPort: number | null
+  pairedAt: number
+}
+
+/** What a device sends when asking to be let in. */
+export interface PairRequest {
+  deviceId: string
+  deviceName: string
+  /** Must match the client certificate presented on the same connection. */
+  fingerprint: string
+  protocolVersion: number
+  /** The token the requester grants us, so the trust works in both directions. */
+  grantToken: string
+}
+
+export interface PairResponse {
+  deviceId: string
+  deviceName: string
+  /** The token we grant the requester. */
+  token: string
+}
+
+/** A device in the sidebar: discovered, trusted, or both. */
+export interface KnownDevice {
+  deviceId: string
+  deviceName: string
+  paired: boolean
+  online: boolean
+  host: string | null
+  port: number | null
 }
 
 export interface DownloadResult {
