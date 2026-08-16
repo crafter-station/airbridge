@@ -16,7 +16,11 @@ mac:
   target: dmg
   identity: null
 win:
-  target: nsis
+  # A portable zip beside the installer: the build is unsigned, so SmartScreen objects to the
+  # installer and unzipping somewhere is the easier way to try it.
+  target:
+    - nsis
+    - zip
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

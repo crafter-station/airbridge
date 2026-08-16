@@ -1,6 +1,6 @@
 {
   "name": "airbridge",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Share folders between Windows and macOS over your LAN",
   "private": true,
   "license": "MIT",
