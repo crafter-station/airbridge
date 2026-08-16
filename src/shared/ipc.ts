@@ -17,6 +17,9 @@ export const IPC = {
   peerShares: 'peer:shares',
   peerList: 'peer:list',
 
+  localList: 'local:list',
+  localPlaces: 'local:places',
+
   transfersList: 'transfers:list',
   transfersCopy: 'transfers:copy',
   transfersCancel: 'transfers:cancel',

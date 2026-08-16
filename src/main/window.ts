@@ -11,15 +11,38 @@ export function markQuitting(): void {
   quitting = true
 }
 
+/** The window frame is hidden on both platforms so the toolbar can own the top strip, the way
+ *  Finder's does. The OS still draws its own controls into that strip — traffic lights inset
+ *  on macOS, an overlay on Windows — because faking those is always worse than the real ones. */
+const TITLE_BAR_HEIGHT = 38
+
+function chromeOptions(): Electron.BrowserWindowConstructorOptions {
+  if (process.platform === 'darwin') {
+    return { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 12 } }
+  }
+
+  if (process.platform === 'win32') {
+    return {
+      titleBarStyle: 'hidden',
+      // Must match --color-chrome, or the strip the OS paints its buttons on shows as a
+      // lighter rectangle sitting inside our toolbar.
+      titleBarOverlay: { color: '#f2f2f2', symbolColor: '#1d1d1f', height: TITLE_BAR_HEIGHT }
+    }
+  }
+
+  return {}
+}
+
 function create(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1100,
     height: 720,
-    minWidth: 720,
+    minWidth: 760,
     minHeight: 480,
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#f6f6f6',
+    ...chromeOptions(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

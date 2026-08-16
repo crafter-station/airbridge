@@ -172,6 +172,8 @@ const child = spawn(electronPath, ['.'], {
     ...process.env,
     AIRBRIDGE_HEADLESS: '1',
     AIRBRIDGE_ALLOW_MULTI: '1',
+      AIRBRIDGE_BIND: '127.0.0.1',
+      AIRBRIDGE_NO_DISCOVERY: '1',
     AIRBRIDGE_DATA_DIR: dataDirectory
   },
   stdio: 'inherit'

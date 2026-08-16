@@ -5,7 +5,7 @@ folder, and it's live — the other machine sees it in a Finder-like window and 
 
 No cloud, no accounts, no SMB configuration.
 
-> Status: **M3** — pairing, browsing and copying work; the Finder UI lands in M4. See
+> Status: **M4** — the Finder UI is in. Live updates and write access are M5 and M6. See
 > [PLAN.md](./PLAN.md) for the design and milestones.
 
 ## Development
@@ -31,6 +31,24 @@ Two suites, both driving real running instances rather than mocks.
   other, then checks the bytes that landed on disk. This is the only way to exercise the client
   half — pairing, certificate pinning, token exchange, resume, collision naming, streaming to
   disk — since it runs inside the main process where a test harness has no reach.
+
+## Looking at the UI
+
+```sh
+pnpm demo [folder]     # two pre-paired instances sharing a fixture folder
+```
+
+Pairing needs someone to click Allow and each instance needs the other's certificate before it
+can be trusted, so `demo` runs them once to mint identities, cross-seeds the trust stores, then
+starts them for real. Both expose a DevTools port (host 9333, guest 9334) because synthetic
+OS-level clicks do not reach an Electron window reliably:
+
+```sh
+node scripts/uishot.mjs 9334 shot.png "text:Work" "wait:table" "click:[title='Icon view']"
+```
+
+Steps run in order — `click:SELECTOR`, `text:EXACT TEXT`, `dblclick:`, `wait:`, `sleep:`, `eval:`,
+`evalfile:` — and the page is captured at the end.
 
 ## Environment variables
 

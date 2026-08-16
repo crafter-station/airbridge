@@ -1,16 +1,24 @@
 @import 'tailwindcss';
 
 @theme {
-  /* Finder's chrome, approximated. These get refined against screenshots in M4. */
-  --color-chrome: #f6f6f6;
-  --color-chrome-border: #d8d8d8;
-  --color-sidebar: #ececec;
+  /* Finder's chrome, approximated. */
+  --color-chrome: #f2f2f2;
+  --color-chrome-border: #d4d4d4;
+  --color-sidebar: #eaeaea;
   --color-ink: #1d1d1f;
-  --color-ink-muted: #6e6e73;
+  --color-ink-muted: #77777c;
   --color-accent: #0a6cff;
 
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+}
+
+:root {
+  /* The OS draws its window controls inside our toolbar, so the toolbar has to keep clear of
+     them — traffic lights on the left for macOS, minimise/maximise/close on the right for
+     Windows. Getting either wrong puts our own buttons underneath unclickable pixels. */
+  --titlebar-inset: 5rem;
+  --titlebar-inset-right: 0.75rem;
 }
 
 html,
@@ -29,4 +37,49 @@ body {
   /* Chrome is chrome: text selection and rubber-band scrolling make it feel like a web page. */
   user-select: none;
   overscroll-behavior: none;
+}
+
+/* Windows keeps its controls on the right: no left inset, and roughly 138px reserved on the
+   right for the three buttons the overlay draws. */
+body.platform-win32 {
+  --titlebar-inset: 0.75rem;
+  --titlebar-inset-right: 9rem;
+}
+
+body.platform-linux {
+  --titlebar-inset: 0.75rem;
+}
+
+.app-drag {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag,
+.app-drag button,
+.app-drag input,
+.app-drag a {
+  -webkit-app-region: no-drag;
+}
+
+/* Thin scrollbars, out of the way until used — the way both platforms do it now. */
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(0 0 0 / 0.22);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(0 0 0 / 0.35);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner,
+::-webkit-scrollbar-track {
+  background: transparent;
 }

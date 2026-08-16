@@ -44,6 +44,19 @@ export interface DirEntry {
   mtime: number
 }
 
+export interface LocalListing {
+  path: string
+  /** Null at a filesystem root, which is where "go up" stops. */
+  parent: string | null
+  entries: DirEntry[]
+}
+
+export interface LocalPlace {
+  name: string
+  path: string
+  icon: 'home' | 'desktop' | 'documents' | 'downloads' | 'drive'
+}
+
 export interface ServerStatus {
   port: number | null
   fingerprint: string | null

@@ -218,9 +218,13 @@ function buildServer(certificate: { key: string; cert: string }): FastifyInstanc
 
 /** Bind the first free port at or above the base, so two instances can coexist on one box. */
 async function listen(server: FastifyInstance): Promise<number> {
+  // Every interface, because being reachable from the LAN is the whole point. Overridable so
+  // local development can stay on loopback and skip the firewall prompt.
+  const host = process.env['AIRBRIDGE_BIND'] || '0.0.0.0'
+
   for (let port = BASE_PORT; port < BASE_PORT + PORT_ATTEMPTS; port++) {
     try {
-      await server.listen({ port, host: '0.0.0.0' })
+      await server.listen({ port, host })
       return port
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw cause

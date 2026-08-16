@@ -5,6 +5,8 @@ import type {
   AppInfo,
   DirEntry,
   KnownDevice,
+  LocalListing,
+  LocalPlace,
   PeerShares,
   ServerStatus,
   Share,
@@ -54,6 +56,11 @@ const api = {
     shares: (deviceId: string): Promise<PeerShares> => ipcRenderer.invoke(IPC.peerShares, deviceId),
     list: (deviceId: string, shareId: string, path: string): Promise<DirEntry[]> =>
       ipcRenderer.invoke(IPC.peerList, deviceId, shareId, path)
+  },
+
+  local: {
+    list: (path: string): Promise<LocalListing> => ipcRenderer.invoke(IPC.localList, path),
+    places: (): Promise<LocalPlace[]> => ipcRenderer.invoke(IPC.localPlaces)
   },
 
   transfers: {

@@ -29,6 +29,18 @@ function identity(): StoredIdentity {
   return current
 }
 
+/**
+ * Write the identity to disk if this is the first run.
+ *
+ * Called explicitly at startup rather than left to whichever module happens to ask first.
+ * It used to be persisted as a side effect of discovery reading the device name, so turning
+ * discovery off silently produced an instance with no identity on disk — and a device id
+ * that changed on every launch would break every pairing that depends on it.
+ */
+export function ensureIdentity(): void {
+  identity()
+}
+
 export function getDeviceId(): string {
   return identity().deviceId
 }

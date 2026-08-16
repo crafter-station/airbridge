@@ -4,6 +4,8 @@ import { EVENTS, IPC } from '@shared/ipc'
 import type {
   DirEntry,
   KnownDevice,
+  LocalListing,
+  LocalPlace,
   PeerShares,
   ServerStatus,
   Share,
@@ -15,7 +17,8 @@ import { getCertificate } from './cert'
 import { knownDevices, notifyDevicesChanged, pairWith, resolvePeer, unpair } from './devices'
 import { onPeersChanged, startDiscovery, stopDiscovery } from './discovery'
 import { broadcast } from './events'
-import { getAppInfo } from './identity'
+import { ensureIdentity, getAppInfo } from './identity'
+import { listLocal, localPlaces } from './local'
 import { localAddresses } from './network'
 import { listPeerDirectory, listPeerShares } from './peer'
 import { cancelJob, clearFinishedJobs, listJobs, startCopy } from './transfers'
@@ -105,6 +108,10 @@ function registerHandlers(): void {
       listPeerDirectory(resolvePeer(deviceId), shareId, path)
   )
 
+  ipcMain.handle(IPC.localList, (_event, path: string): Promise<LocalListing> => listLocal(path))
+
+  ipcMain.handle(IPC.localPlaces, (): LocalPlace[] => localPlaces())
+
   ipcMain.handle(IPC.transfersList, (): TransferJob[] => listJobs())
 
   ipcMain.handle(
@@ -160,14 +167,19 @@ if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {
   app.on('second-instance', () => showWindow())
 
   void app.whenReady().then(async () => {
+    ensureIdentity()
     registerHandlers()
 
     // Sharing starts with the app, not with the window: the point of living in the tray is
     // that a share published this morning is still reachable this afternoon.
     const port = await startServer()
-    await startDiscovery(port)
 
-    onPeersChanged(() => notifyDevicesChanged())
+    // mDNS opens a multicast socket, which is a second firewall prompt during local work.
+    // Peers seeded by hand are reachable through their remembered address without it.
+    if (process.env['AIRBRIDGE_NO_DISCOVERY'] !== '1') {
+      await startDiscovery(port)
+      onPeersChanged(() => notifyDevicesChanged())
+    }
 
     createTray()
 
