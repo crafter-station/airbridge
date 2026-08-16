@@ -9,6 +9,43 @@ No cloud, no accounts, no SMB configuration.
 > unsigned, so the first launch needs a right-click → Open on macOS and a "Run anyway" on
 > Windows.
 
+## Install
+
+The repository is private, so both paths below need you signed in — `gh auth login` for the
+prebuilt one, ordinary git credentials for the source one.
+
+### Windows — prebuilt, one line
+
+Downloads the latest release, unpacks it to `%LOCALAPPDATA%\Programs\airbridge`, and runs it.
+Needs [GitHub CLI](https://cli.github.com).
+
+```powershell
+gh release download --repo crafter-station/airbridge --pattern "*win.zip" --dir "$env:TEMP\airbridge-dl" --clobber; Expand-Archive (Get-ChildItem "$env:TEMP\airbridge-dl\*.zip").FullName "$env:LOCALAPPDATA\Programs\airbridge" -Force; & "$env:LOCALAPPDATA\Programs\airbridge\airbridge.exe"
+```
+
+### macOS — from source, one line
+
+There is no macOS binary in the release: electron-builder cannot cross-build a `.dmg` from
+Windows, which is where this was developed. So the Mac installs by building, which needs
+[bun](https://bun.sh) and git. It ends by opening the `.dmg` for you to drag across.
+
+```sh
+git clone https://github.com/crafter-station/airbridge.git ~/airbridge && cd ~/airbridge && bun install && bun run package && open dist/*.dmg
+```
+
+To just run it without installing, swap the tail for `bun run build && bun run preview`.
+
+The same line works on Windows in PowerShell 7 (`pwsh`), producing an installer in `dist\`:
+
+```powershell
+git clone https://github.com/crafter-station/airbridge.git $HOME\airbridge && cd $HOME\airbridge && bun install && bun run package && ii dist
+```
+
+> Windows PowerShell 5.1 has no `&&`. Use `pwsh`, or replace each `&&` with `;`.
+
+Any of pnpm, npm or bun will do — no script shells out to a particular one. bun is suggested
+only because it installs fastest.
+
 ## How it works
 
 Each machine runs a small HTTPS server and advertises itself over mDNS. Connecting asks the
@@ -45,9 +82,10 @@ macOS builds have to be made on a Mac — electron-builder cannot produce a `.dm
 
 ## Development
 
-Needs **pnpm 11** — the lockfile and `pnpm-workspace.yaml` use fields pnpm 9 rejects. The
-version is pinned in `package.json`, so `corepack pnpm …` fetches the right one without
-touching your global install.
+Any package manager works. If you use **pnpm** it must be **11** — the lockfile and
+`pnpm-workspace.yaml` use fields pnpm 9 rejects outright. The version is pinned in
+`package.json`, so `corepack pnpm …` fetches the right one without touching your global
+install. `bun install` and `npm install` need no such care.
 
 ```sh
 pnpm install

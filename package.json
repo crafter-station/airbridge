@@ -13,15 +13,15 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
+    "build": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "icons": "node scripts/generate-icons.mjs",
     "smoke": "node scripts/smoke.mjs",
     "loopback": "node scripts/loopback.mjs",
     "demo": "node scripts/demo.mjs",
-    "package": "npm run build && electron-builder",
-    "package:dir": "npm run build && electron-builder --dir",
+    "package": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && electron-vite build && electron-builder",
+    "package:dir": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit && electron-vite build && electron-builder --dir",
     "test": "node scripts/smoke.mjs && node scripts/loopback.mjs"
   },
   "devDependencies": {
