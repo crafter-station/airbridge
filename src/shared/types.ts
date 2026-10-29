@@ -204,3 +204,14 @@ export interface TransferJob {
   startedAt: number
   finishedAt: number | null
 }
+
+/** Where the self-updater is. Pushed to the renderer so the status bar can show it. */
+export interface UpdateState {
+  status: 'idle' | 'checking' | 'up-to-date' | 'downloading' | 'ready' | 'error'
+  currentVersion: string
+  /** The version being downloaded or waiting to install. */
+  version?: string
+  /** 0–100 while downloading. */
+  percent?: number
+  message?: string
+}

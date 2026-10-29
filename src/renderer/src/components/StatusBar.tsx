@@ -1,5 +1,49 @@
 import { formatBytes } from '../format'
-import { useTransfers } from '../queries'
+import { useTransfers, useUpdate } from '../queries'
+
+/** Version and update state, at the far end of the strip where it stays out of the way. */
+function UpdateStatus(): React.JSX.Element | null {
+  const { data: update } = useUpdate()
+  if (!update) return null
+
+  const button = 'shrink-0 rounded px-1.5 py-0.5 hover:bg-(--color-hover)'
+
+  switch (update.status) {
+    case 'checking':
+      return <span className="shrink-0">Checking for updates…</span>
+    case 'downloading':
+      return (
+        <span className="shrink-0">
+          Downloading {update.version}
+          {update.percent ? ` — ${Math.round(update.percent)}%` : '…'}
+        </span>
+      )
+    case 'ready':
+      return (
+        <button
+          type="button"
+          onClick={() => void window.airbridge.update.install()}
+          className={`${button} text-(--color-accent)`}
+        >
+          Restart to update to {update.version}
+        </button>
+      )
+    default:
+      return (
+        <button
+          type="button"
+          onClick={() => void window.airbridge.update.check()}
+          title={update.status === 'error' ? update.message : undefined}
+          className={button}
+        >
+          v{update.currentVersion}
+          {update.status === 'up-to-date' && ' · Up to date'}
+          {update.status === 'error' && ' · Update check failed'}
+          {' · Check for updates'}
+        </button>
+      )
+  }
+}
 
 /**
  * Finder's bottom strip: how much is here, and what is happening. Transfers live here rather
@@ -57,6 +101,10 @@ export function StatusBar({ itemCount }: { itemCount: number | null }): React.JS
           </button>
         </div>
       )}
+
+      <div className="ml-auto flex shrink-0 items-center">
+        <UpdateStatus />
+      </div>
     </footer>
   )
 }

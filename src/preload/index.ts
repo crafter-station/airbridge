@@ -13,7 +13,8 @@ import type {
   Share,
   TransferItem,
   TransferJob,
-  TrustedDevice
+  TrustedDevice,
+  UpdateState
 } from '@shared/types'
 
 /** Wrap a push channel as a subscribe function that hands back its own unsubscribe, so a
@@ -97,6 +98,13 @@ const api = {
     clear: (): Promise<TransferJob[]> => ipcRenderer.invoke(IPC.transfersClear),
     reveal: (path: string): Promise<void> => ipcRenderer.invoke(IPC.transfersReveal, path),
     onChanged: subscribe<TransferJob[]>(EVENTS.transfers)
+  },
+
+  update: {
+    state: (): Promise<UpdateState> => ipcRenderer.invoke(IPC.updateState),
+    check: (): Promise<UpdateState> => ipcRenderer.invoke(IPC.updateCheck),
+    install: (): Promise<void> => ipcRenderer.invoke(IPC.updateInstall),
+    onChanged: subscribe<UpdateState>(EVENTS.update)
   }
 }
 

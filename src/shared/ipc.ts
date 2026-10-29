@@ -27,7 +27,11 @@ export const IPC = {
   transfersUpload: 'transfers:upload',
   transfersCancel: 'transfers:cancel',
   transfersClear: 'transfers:clear',
-  transfersReveal: 'transfers:reveal'
+  transfersReveal: 'transfers:reveal',
+
+  updateState: 'update:state',
+  updateCheck: 'update:check',
+  updateInstall: 'update:install'
 } as const
 
 /** Pushed from main to every window. The renderer subscribes rather than polling. */
@@ -36,7 +40,8 @@ export const EVENTS = {
   shares: 'event:shares',
   transfers: 'event:transfers',
   /** Something changed on a peer; the renderer re-reads what it is showing. */
-  peer: 'event:peer'
+  peer: 'event:peer',
+  update: 'event:update'
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

@@ -11,7 +11,8 @@ import type {
   Share,
   TransferItem,
   TransferJob,
-  TrustedDevice
+  TrustedDevice,
+  UpdateState
 } from '@shared/types'
 import { getCertificate } from './cert'
 import { knownDevices, notifyDevicesChanged, pairWith, resolvePeer, unpair } from './devices'
@@ -29,7 +30,7 @@ import { onShareAvailabilityChanged, refreshWatchers, startWatching, stopWatchin
 import { serverPort, startServer, stopServer } from './server'
 import { addShare, listShares, removeShare, setShareWritable } from './shares'
 import { createTray } from './tray'
-import { startUpdater } from './updater'
+import { checkForUpdates, installNow, installOnQuit, startUpdater, updateState } from './updater'
 import { markQuitting, showWindow } from './window'
 
 /**
@@ -214,6 +215,13 @@ function registerHandlers(): void {
   })
 
   ipcMain.handle(IPC.transfersReveal, (_event, path: string): void => shell.showItemInFolder(path))
+
+  ipcMain.handle(IPC.updateState, (): UpdateState => updateState())
+  ipcMain.handle(IPC.updateCheck, async (): Promise<UpdateState> => {
+    await checkForUpdates()
+    return updateState()
+  })
+  ipcMain.handle(IPC.updateInstall, (): Promise<void> => installNow())
 }
 
 if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {
@@ -246,7 +254,7 @@ if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {
     startPeerEvents()
 
     createTray()
-    startUpdater()
+    void startUpdater()
 
     // The smoke tests drive a real instance over the network and have no use for a window.
     if (process.env['AIRBRIDGE_HEADLESS'] !== '1') showWindow()
@@ -267,6 +275,7 @@ if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {
   app.on('window-all-closed', () => {})
 
   app.on('before-quit', () => {
+    installOnQuit()
     markQuitting()
     stopPeerEvents()
     void stopWatching()

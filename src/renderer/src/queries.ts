@@ -9,7 +9,8 @@ import type {
   PublicShare,
   ServerStatus,
   Share,
-  TransferJob
+  TransferJob,
+  UpdateState
 } from '@shared/types'
 
 /**
@@ -49,6 +50,17 @@ export function useTransfers(): UseQueryResult<TransferJob[]> {
   )
 
   return useQuery({ queryKey: ['transfers'], queryFn: () => window.airbridge.transfers.list() })
+}
+
+export function useUpdate(): UseQueryResult<UpdateState> {
+  const client = useQueryClient()
+
+  useEffect(
+    () => window.airbridge.update.onChanged((state) => client.setQueryData(['update'], state)),
+    [client]
+  )
+
+  return useQuery({ queryKey: ['update'], queryFn: () => window.airbridge.update.state() })
 }
 
 export function useServerStatus(): UseQueryResult<ServerStatus> {

@@ -1,6 +1,8 @@
 import { BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
 
+import { checkOnWindowShown } from './updater'
+
 let mainWindow: BrowserWindow | null = null
 
 /** Must track --color-chrome and --color-ink in styles.css. The window frame and the title-bar
@@ -119,6 +121,7 @@ export function showWindow(): void {
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
+  checkOnWindowShown()
 }
 
 export function toggleWindow(): void {
