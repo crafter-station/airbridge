@@ -146,8 +146,7 @@ function buildServer(certificate: { key: string; cert: string }): FastifyInstanc
       return await handlePairRequest(
         request.body,
         clientFingerprint(request),
-        request.socket.remoteAddress ?? '',
-        request.socket.remotePort ?? 0
+        request.socket.remoteAddress?.replace(/^::ffff:/, '') ?? ''
       )
     } catch (cause) {
       if (cause instanceof PairingError) {
@@ -172,9 +171,10 @@ function buildServer(certificate: { key: string; cert: string }): FastifyInstanc
         return
       }
 
-      if (request.socket.remoteAddress) {
-        rememberAddress(device.deviceId, request.socket.remoteAddress, device.lastPort ?? 0)
-      }
+      // Only with a port already on record: their source port is ephemeral, and storing 0
+      // would leave a remembered address that can never be dialled.
+      const remote = request.socket.remoteAddress?.replace(/^::ffff:/, '')
+      if (remote && device.lastPort) rememberAddress(device.deviceId, remote, device.lastPort)
     })
 
     /** Who we are. Lets a peer confirm it reached the machine it meant to. */

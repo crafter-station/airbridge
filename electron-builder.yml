@@ -22,5 +22,14 @@ win:
     - nsis
     - zip
 nsis:
+  # Dashes, not the default spaces: GitHub rewrites spaces in asset names, and the updater
+  # then cannot find the file latest.yml names.
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true
+# Where the updater looks (src/main/updater.ts). Also makes `electron-builder --publish`
+# upload latest.yml next to the installer, which is what an installed copy reads.
+publish:
+  provider: github
+  owner: crafter-station
+  repo: airbridge

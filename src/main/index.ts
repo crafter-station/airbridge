@@ -29,6 +29,7 @@ import { onShareAvailabilityChanged, refreshWatchers, startWatching, stopWatchin
 import { serverPort, startServer, stopServer } from './server'
 import { addShare, listShares, removeShare, setShareWritable } from './shares'
 import { createTray } from './tray'
+import { startUpdater } from './updater'
 import { markQuitting, showWindow } from './window'
 
 /**
@@ -128,13 +129,14 @@ function registerHandlers(): void {
 
   ipcMain.handle(
     IPC.peerShares,
-    (_event, deviceId: string): Promise<PeerShares> => listPeerShares(resolvePeer(deviceId))
+    async (_event, deviceId: string): Promise<PeerShares> =>
+      listPeerShares(await resolvePeer(deviceId))
   )
 
   ipcMain.handle(
     IPC.peerList,
-    (_event, deviceId: string, shareId: string, path: string): Promise<DirEntry[]> =>
-      listPeerDirectory(resolvePeer(deviceId), shareId, path)
+    async (_event, deviceId: string, shareId: string, path: string): Promise<DirEntry[]> =>
+      listPeerDirectory(await resolvePeer(deviceId), shareId, path)
   )
 
   ipcMain.handle(IPC.localList, (_event, path: string): Promise<LocalListing> => listLocal(path))
@@ -169,7 +171,7 @@ function registerHandlers(): void {
       const device = knownDevices().find((known) => known.deviceId === deviceId)
 
       return startCopy({
-        peer: resolvePeer(deviceId),
+        peer: await resolvePeer(deviceId),
         deviceId,
         deviceName: device?.deviceName ?? deviceId,
         shareId,
@@ -182,18 +184,18 @@ function registerHandlers(): void {
 
   ipcMain.handle(
     IPC.transfersUpload,
-    (
+    async (
       _event,
       deviceId: string,
       shareId: string,
       shareName: string,
       localPaths: string[],
       remoteDirectory: string
-    ): TransferJob => {
+    ): Promise<TransferJob> => {
       const device = knownDevices().find((known) => known.deviceId === deviceId)
 
       return startUpload({
-        peer: resolvePeer(deviceId),
+        peer: await resolvePeer(deviceId),
         deviceId,
         deviceName: device?.deviceName ?? deviceId,
         shareId,
@@ -244,6 +246,7 @@ if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {
     startPeerEvents()
 
     createTray()
+    startUpdater()
 
     // The smoke tests drive a real instance over the network and have no use for a window.
     if (process.env['AIRBRIDGE_HEADLESS'] !== '1') showWindow()

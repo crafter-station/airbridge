@@ -1,6 +1,7 @@
 import { Menu, Tray, nativeImage, nativeTheme, app } from 'electron'
 
 import { resourcePath } from './resources'
+import { checkForUpdates } from './updater'
 import { markQuitting, showWindow, toggleWindow } from './window'
 
 let tray: Tray | null = null
@@ -25,6 +26,7 @@ export function createTray(): Tray {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open airbridge', click: () => showWindow() },
+      { label: 'Check for Updates…', click: () => void checkForUpdates(true) },
       { type: 'separator' },
       {
         label: 'Quit airbridge',

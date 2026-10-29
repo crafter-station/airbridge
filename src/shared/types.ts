@@ -83,7 +83,10 @@ export interface DiscoveredPeer {
   deviceId: string
   deviceName: string
   fingerprint: string
+  /** The most recently advertised address, for display. */
   host: string
+  /** Everything it advertised. Connecting tries all of them — see `resolvePeer`. */
+  addresses: string[]
   port: number
   protocolVersion: number
   paired: boolean
@@ -118,6 +121,9 @@ export interface PairRequest {
   protocolVersion: number
   /** The token the requester grants us, so the trust works in both directions. */
   grantToken: string
+  /** Where the requester's own server listens. Their connection's source port is ephemeral,
+   *  so without this the approving side has no port to call back on. Absent from 1.0.0. */
+  port?: number
 }
 
 export interface PairResponse {

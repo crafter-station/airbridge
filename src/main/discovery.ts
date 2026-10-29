@@ -42,24 +42,39 @@ function textValue(service: Service, key: string): string {
   return ''
 }
 
-/** Prefer an IPv4 address from the record; fall back to whoever sent it to us. */
-function addressOf(service: Service): string | null {
-  const ipv4 = service.addresses?.find((address) => isIPv4(address))
-  return ipv4 ?? service.referer?.address ?? null
+/**
+ * Every IPv4 address the record names, plus whoever sent it to us.
+ *
+ * All of them, not the first: a machine on Wi-Fi and Ethernet at once advertises both, and
+ * only one may route from here. Which one is settled by trying them when we connect.
+ */
+function addressesOf(service: Service): string[] {
+  const named = (service.addresses ?? []).filter((address) => isIPv4(address))
+  const referer = service.referer?.address
+  return [...new Set(referer && isIPv4(referer) ? [...named, referer] : named)]
 }
 
 function absorb(service: Service): void {
   const deviceId = textValue(service, TXT.deviceId)
-  const host = addressOf(service)
+  const addresses = addressesOf(service)
 
   // Our own advertisement comes straight back at us over multicast loopback.
-  if (!deviceId || !host || deviceId === getDeviceId()) return
+  if (!deviceId || addresses.length === 0 || deviceId === getDeviceId()) return
+
+  // One browser per adapter means the same device arrives once per adapter. Merge rather than
+  // overwrite, unless it moved port — which means it restarted, and the old addresses are dead.
+  const previous = peers.get(deviceId)
+  const merged =
+    previous && previous.port === service.port
+      ? [...new Set([...addresses, ...previous.addresses])]
+      : addresses
 
   peers.set(deviceId, {
     deviceId,
     deviceName: textValue(service, TXT.deviceName) || service.name,
     fingerprint: textValue(service, TXT.fingerprint),
-    host,
+    host: merged[0],
+    addresses: merged,
     port: service.port,
     protocolVersion: Number(textValue(service, TXT.protocolVersion)) || 0,
     paired: getTrusted(deviceId) !== undefined

@@ -100,7 +100,7 @@ async function serveRemote(
   path: string,
   rangeHeader: string | null
 ): Promise<Response> {
-  const upstream = await openPeerFile(resolvePeer(deviceId), shareId, path, rangeHeader)
+  const upstream = await openPeerFile(await resolvePeer(deviceId), shareId, path, rangeHeader)
 
   if (upstream.status >= 400) {
     upstream.body.resume()

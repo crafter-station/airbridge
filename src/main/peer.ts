@@ -24,6 +24,11 @@ import { getDeviceId, getDeviceName } from './identity'
  *  that looks complete — the rename to the real name is the commit. */
 export const PART_SUFFIX = '.airbridge-part'
 
+/** A LAN peer answers in milliseconds. Waiting for the OS to give up (21s on Windows, over a
+ *  minute on macOS) only delays the same ETIMEDOUT. Covers connecting, not the response:
+ *  pairing legitimately waits as long as a person takes to click Allow. */
+const CONNECT_TIMEOUT_MS = 6000
+
 interface PeerResponse {
   status: number
   headers: IncomingHttpHeaders
@@ -87,7 +92,14 @@ async function peerRequest(
 
     request.on('socket', (socket) => {
       const tls = socket as TLSSocket
+
+      const connectTimer = setTimeout(() => {
+        tls.destroy(new Error(`Timed out connecting to ${peer.host}:${peer.port}`))
+      }, CONNECT_TIMEOUT_MS)
+      tls.once('close', () => clearTimeout(connectTimer))
+
       tls.once('secureConnect', () => {
+        clearTimeout(connectTimer)
         const certificate = tls.getPeerX509Certificate()
         if (!certificate) {
           tls.destroy(new Error('Peer presented no certificate'))
@@ -181,7 +193,8 @@ export async function fetchPeerIdentity(
  */
 export async function requestPairing(
   address: { host: string; port: number },
-  grantToken: string
+  grantToken: string,
+  ownPort: number | null
 ): Promise<PairResponse & { fingerprint: string }> {
   const identity = await getCertificate()
 
@@ -190,7 +203,8 @@ export async function requestPairing(
     deviceName: getDeviceName(),
     fingerprint: identity.fingerprint,
     protocolVersion: PROTOCOL_VERSION,
-    grantToken
+    grantToken,
+    ...(ownPort ? { port: ownPort } : {})
   }
 
   const response = await peerRequest(address, { path: '/pair', method: 'POST', body })

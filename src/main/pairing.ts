@@ -64,9 +64,12 @@ async function askUser(request: PairRequest): Promise<boolean> {
 export async function handlePairRequest(
   request: PairRequest,
   presentedFingerprint: string | null,
-  remoteHost: string,
-  remotePort: number
+  remoteHost: string
 ): Promise<PairResponse> {
+  // A 1.0.0 peer does not say which port it serves on. Leave it unknown rather than guess:
+  // mDNS fills it in, and a wrong remembered port is worse than none.
+  const remotePort = request.port ?? null
+
   if (request.protocolVersion !== PROTOCOL_VERSION) {
     throw new PairingError(
       426,
@@ -102,7 +105,7 @@ export async function handlePairRequest(
       deviceName: request.deviceName,
       outboundToken: request.grantToken,
       lastHost: remoteHost,
-      lastPort: remotePort
+      lastPort: remotePort ?? existing.lastPort
     })
     return { deviceId: getDeviceId(), deviceName: getDeviceName(), token: existing.inboundToken }
   }

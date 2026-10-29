@@ -78,9 +78,9 @@ function scheduleRetry(deviceId: string, connection: Connection): void {
 async function connect(deviceId: string, connection: Connection): Promise<void> {
   if (connection.closed) return
 
-  let peer: ReturnType<typeof resolvePeer>
+  let peer: Awaited<ReturnType<typeof resolvePeer>>
   try {
-    peer = resolvePeer(deviceId)
+    peer = await resolvePeer(deviceId)
   } catch {
     // Offline, or no address yet. Try again once discovery has had another go.
     scheduleRetry(deviceId, connection)
@@ -88,6 +88,9 @@ async function connect(deviceId: string, connection: Connection): Promise<void> 
   }
 
   const identity = await getCertificate()
+
+  // Resolving takes a moment now; the device may have been unpaired meanwhile.
+  if (connection.closed) return
 
   // The same rules as every other call: our certificate goes out, theirs is checked against
   // the fingerprint pinned at pairing, and the bearer token identifies the session.

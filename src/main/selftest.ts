@@ -27,18 +27,18 @@ export async function runSelfTest(target: string): Promise<void> {
   try {
     const device = await withRetries(() => pairWith(host, port))
 
-    const { shares } = await listPeerShares(resolvePeer(device.deviceId))
+    const { shares } = await listPeerShares(await resolvePeer(device.deviceId))
     const share = shares[0]
     if (!share) throw new Error('Peer published no shares')
 
-    const entries = await listPeerDirectory(resolvePeer(device.deviceId), share.id, '')
+    const entries = await listPeerDirectory(await resolvePeer(device.deviceId), share.id, '')
     const file = entries.find((entry) => entry.kind === 'file')
     if (!file) throw new Error('Peer share contained no files')
 
-    const nested = await listPeerDirectory(resolvePeer(device.deviceId), share.id, 'nested')
+    const nested = await listPeerDirectory(await resolvePeer(device.deviceId), share.id, 'nested')
 
     const downloaded = await downloadFile(
-      resolvePeer(device.deviceId),
+      await resolvePeer(device.deviceId),
       share.id,
       file.name,
       app.getPath('userData')
@@ -156,7 +156,7 @@ async function verifyResume(
 
   await writeFile(join(directory, `${fileName}${PART_SUFFIX}`), expected.subarray(0, head))
 
-  const result = await downloadFile(resolvePeer(deviceId), shareId, fileName, directory, {
+  const result = await downloadFile(await resolvePeer(deviceId), shareId, fileName, directory, {
     resume: true
   })
 
@@ -175,7 +175,7 @@ async function copyWholeShare(
   await mkdir(destination, { recursive: true })
 
   const job = startCopy({
-    peer: resolvePeer(deviceId),
+    peer: await resolvePeer(deviceId),
     deviceId,
     deviceName: 'selftest',
     shareId,
