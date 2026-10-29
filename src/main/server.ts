@@ -18,7 +18,7 @@ import { onShareAvailabilityChanged, onShareContentChanged } from './watcher'
 
 /** Fixed so a person can type it, with room to climb when it is taken — which is exactly
  *  what happens when a second instance is started for loopback testing. */
-const BASE_PORT = 45789
+export const BASE_PORT = 45789
 const PORT_ATTEMPTS = 20
 
 let instance: FastifyInstance | null = null

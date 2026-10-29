@@ -9,8 +9,11 @@ import { getDeviceId, getDeviceName } from './identity'
 import { localAddresses } from './network'
 import { getTrusted } from './trust'
 
-/** multicast-dns takes an `interface` option that bonjour-service does not declare. */
-type BonjourOptions = ConstructorParameters<typeof Bonjour>[0] & { interface?: string }
+/** multicast-dns takes `interface` and `bind` options that bonjour-service does not declare. */
+type BonjourOptions = ConstructorParameters<typeof Bonjour>[0] & {
+  interface?: string
+  bind?: string
+}
 
 interface Advertiser {
   bonjour: Bonjour
@@ -112,7 +115,11 @@ export async function startDiscovery(port: number): Promise<void> {
   const interfaces: (string | undefined)[] = addresses.length > 0 ? addresses : [undefined]
 
   for (const address of interfaces) {
-    const options: BonjourOptions = address ? { interface: address } : {}
+    // `interface` picks the adapter to send and join the group on. Left to itself,
+    // multicast-dns also binds the socket to that unicast address — and macOS never delivers
+    // multicast to a socket bound that way, so every reply was dropped and the Mac discovered
+    // nobody. Windows delivers them regardless, which is how this went unnoticed.
+    const options: BonjourOptions = address ? { interface: address, bind: '0.0.0.0' } : {}
 
     // An unreachable adapter should cost us that adapter, not the whole discovery system.
     const bonjour = new Bonjour(options, (error: unknown) =>

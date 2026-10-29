@@ -1,5 +1,6 @@
 appId: dev.airbridge.app
 productName: airbridge
+afterPack: scripts/adhoc-sign.cjs
 directories:
   buildResources: build
   output: dist
@@ -14,7 +15,15 @@ extraResources:
 mac:
   category: public.app-category.utilities
   target: dmg
+  # No certificate; scripts/adhoc-sign.cjs re-signs ad-hoc under our bundle id instead.
   identity: null
+  # macOS 15+ blocks connections to LAN addresses until the user allows Local Network access,
+  # and only asks when these are declared. Without them every call to a peer failed silently
+  # with "not answering" while the same build launched from a terminal worked.
+  extendInfo:
+    NSLocalNetworkUsageDescription: airbridge connects to your other computers on this network to share folders with them.
+    NSBonjourServices:
+      - _airbridge._tcp
 win:
   # A portable zip beside the installer: the build is unsigned, so SmartScreen objects to the
   # installer and unzipping somewhere is the easier way to try it.

@@ -5,7 +5,7 @@ import type { KnownDevice, PeerAddress, TrustedDevice } from '@shared/types'
 import { discoveredPeers, refreshPairedFlags } from './discovery'
 import { broadcast } from './events'
 import { requestPairing } from './peer'
-import { serverPort } from './server'
+import { BASE_PORT, serverPort } from './server'
 import { listTrusted, mintToken, rememberAddress, revokeTrusted, upsertTrusted } from './trust'
 
 /** How long one address gets to accept a TCP connection before it is written off. */
@@ -109,6 +109,9 @@ export async function resolvePeer(deviceId: string): Promise<PeerAddress> {
   consider(trusted.lastHost, trusted.lastPort)
   // They called us from this address, so it routes; their port is whatever mDNS last said.
   consider(trusted.lastHost, live?.port)
+  // Where nearly every install listens. 1.0.0 recorded a peer's ephemeral source port at
+  // pairing, so without this a device mDNS cannot see was unreachable for good.
+  consider(trusted.lastHost, BASE_PORT)
 
   if (candidates.size === 0) throw new Error(`${trusted.deviceName} is not reachable right now`)
 
