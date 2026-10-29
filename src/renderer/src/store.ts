@@ -35,6 +35,12 @@ interface UiState {
   historyIndex: number
 
   selection: Set<string>
+  /** Where a shift-click range starts: the last item clicked without shift. */
+  selectionAnchor: string | null
+  /** The main pane's entries in on-screen order, so select-all and ranges match what is shown. */
+  visibleNames: string[]
+  /** A failure from an action with no other place to report it, such as a move. */
+  notice: string | null
   viewMode: ViewMode
   sortKey: SortKey
   sortAscending: boolean
@@ -51,8 +57,12 @@ interface UiState {
   canGoForward: () => boolean
 
   select: (names: string[]) => void
-  toggleSelected: (name: string, additive: boolean) => void
+  /** A click on an item, with Finder's modifiers: ⌘/Ctrl toggles, Shift extends a range. */
+  clickItem: (name: string, modifiers: ClickModifiers) => void
+  selectAll: () => void
   clearSelection: () => void
+  setVisibleNames: (names: string[]) => void
+  setNotice: (notice: string | null) => void
 
   setViewMode: (mode: ViewMode) => void
   sortBy: (key: SortKey) => void
@@ -65,12 +75,49 @@ interface UiState {
   stepPreview: (delta: number) => void
 }
 
+export interface ClickModifiers {
+  toggle: boolean
+  range: boolean
+}
+
+/** Finder's click rules over any ordered list, shared by the main pane and the local pane. */
+export function nextSelection(
+  current: Set<string>,
+  anchor: string | null,
+  ordered: string[],
+  name: string,
+  { toggle, range }: ClickModifiers
+): { selection: Set<string>; anchor: string | null } {
+  if (range && anchor !== null) {
+    const from = ordered.indexOf(anchor)
+    const to = ordered.indexOf(name)
+    if (from !== -1 && to !== -1) {
+      const [start, end] = from < to ? [from, to] : [to, from]
+      const span = ordered.slice(start, end + 1)
+      // ⌘⇧ adds the range to what is already selected; plain ⇧ replaces it.
+      return { selection: new Set(toggle ? [...current, ...span] : span), anchor }
+    }
+  }
+
+  if (toggle) {
+    const selection = new Set(current)
+    if (selection.has(name)) selection.delete(name)
+    else selection.add(name)
+    return { selection, anchor: name }
+  }
+
+  return { selection: new Set([name]), anchor: name }
+}
+
 export const useUi = create<UiState>((set, get) => ({
   location: { kind: 'welcome' },
   history: [{ kind: 'welcome' }],
   historyIndex: 0,
 
   selection: new Set(),
+  selectionAnchor: null,
+  visibleNames: [],
+  notice: null,
   viewMode: 'list',
   sortKey: 'name',
   sortAscending: true,
@@ -120,19 +167,27 @@ export const useUi = create<UiState>((set, get) => ({
   canGoBack: () => get().historyIndex > 0,
   canGoForward: () => get().historyIndex < get().history.length - 1,
 
-  select: (names) => set({ selection: new Set(names) }),
+  select: (names) => set({ selection: new Set(names), selectionAnchor: names.at(-1) ?? null }),
 
-  toggleSelected: (name, additive) =>
+  clickItem: (name, modifiers) =>
     set((state) => {
-      if (!additive) return { selection: new Set([name]) }
-
-      const selection = new Set(state.selection)
-      if (selection.has(name)) selection.delete(name)
-      else selection.add(name)
-      return { selection }
+      const next = nextSelection(
+        state.selection,
+        state.selectionAnchor,
+        state.visibleNames,
+        name,
+        modifiers
+      )
+      return { selection: next.selection, selectionAnchor: next.anchor }
     }),
 
-  clearSelection: () => set({ selection: new Set() }),
+  selectAll: () => set((state) => ({ selection: new Set(state.visibleNames) })),
+
+  clearSelection: () => set({ selection: new Set(), selectionAnchor: null }),
+
+  setVisibleNames: (visibleNames) => set({ visibleNames }),
+
+  setNotice: (notice) => set({ notice }),
 
   setViewMode: (viewMode) => set({ viewMode }),
 
@@ -174,3 +229,14 @@ export const useUi = create<UiState>((set, get) => ({
       }
     })
 }))
+
+/** Run an action whose failure has nowhere else to go, and show the failure in the status bar. */
+export async function reporting(action: () => Promise<unknown>): Promise<void> {
+  try {
+    await action()
+  } catch (cause) {
+    // IPC wraps main-process errors as "Error invoking remote method 'x': Error: message".
+    const message = cause instanceof Error ? cause.message : String(cause)
+    useUi.getState().setNotice(message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+  }
+}

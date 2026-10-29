@@ -1,6 +1,6 @@
-import { useDevices, usePeerShares } from '../queries'
+import { useDevices, usePeerShares, useRefresh } from '../queries'
 import { useUi } from '../store'
-import { ChevronIcon, IconViewIcon, ListViewIcon, PaneIcon } from './Icons'
+import { ChevronIcon, IconViewIcon, ListViewIcon, PaneIcon, RefreshIcon } from './Icons'
 
 /**
  * The top strip. It doubles as the window's drag handle, so everything clickable inside it
@@ -12,6 +12,7 @@ export function Toolbar(): React.JSX.Element {
   const setViewMode = useUi((state) => state.setViewMode)
   const paneOpen = useUi((state) => state.paneOpen)
   const setPaneOpen = useUi((state) => state.setPaneOpen)
+  const refresh = useRefresh()
 
   return (
     <header className="app-drag flex h-[38px] shrink-0 items-center gap-2 border-b border-(--color-chrome-border) bg-(--color-chrome) pr-[var(--titlebar-inset-right)] pl-[var(--titlebar-inset)]">
@@ -21,6 +22,9 @@ export function Toolbar(): React.JSX.Element {
         </IconButton>
         <IconButton label="Forward" onClick={forward} disabled={!canGoForward()}>
           <ChevronIcon className="h-3.5 w-3.5" />
+        </IconButton>
+        <IconButton label="Refresh (⌘R)" onClick={refresh}>
+          <RefreshIcon className="h-3.5 w-3.5" />
         </IconButton>
       </div>
 

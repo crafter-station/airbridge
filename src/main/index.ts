@@ -16,13 +16,14 @@ import type {
 } from '@shared/types'
 import { getCertificate } from './cert'
 import { knownDevices, notifyDevicesChanged, pairWith, resolvePeer, unpair } from './devices'
-import { onPeersChanged, startDiscovery, stopDiscovery } from './discovery'
+import { onPeersChanged, refreshDiscovery, startDiscovery, stopDiscovery } from './discovery'
 import { broadcast } from './events'
 import { ensureIdentity, getAppInfo } from './identity'
 import { listLocal, localPlaces } from './local'
 import { showDeviceMenu, showShareMenu } from './menus'
 import { localAddresses } from './network'
-import { listPeerDirectory, listPeerShares } from './peer'
+import { moveAllInto } from './move'
+import { listPeerDirectory, listPeerShares, movePeerEntries } from './peer'
 import { startPeerEvents, stopPeerEvents, syncConnections } from './peerEvents'
 import { handlePreviewRequests, registerPreviewScheme } from './preview'
 import { cancelJob, clearFinishedJobs, listJobs, startCopy, startUpload } from './transfers'
@@ -143,6 +144,28 @@ function registerHandlers(): void {
   ipcMain.handle(IPC.localList, (_event, path: string): Promise<LocalListing> => listLocal(path))
 
   ipcMain.handle(IPC.localPlaces, (): LocalPlace[] => localPlaces())
+
+  ipcMain.handle(
+    IPC.localMove,
+    (_event, paths: string[], destination: string): Promise<void> =>
+      moveAllInto(paths, destination)
+  )
+
+  ipcMain.handle(
+    IPC.peerMove,
+    async (
+      _event,
+      deviceId: string,
+      shareId: string,
+      paths: string[],
+      destination: string
+    ): Promise<void> => movePeerEntries(await resolvePeer(deviceId), shareId, paths, destination)
+  )
+
+  ipcMain.handle(IPC.devicesRefresh, (): KnownDevice[] => {
+    refreshDiscovery()
+    return knownDevices()
+  })
 
   ipcMain.handle(IPC.transfersList, (): TransferJob[] => listJobs())
 

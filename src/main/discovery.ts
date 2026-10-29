@@ -18,7 +18,17 @@ type BonjourOptions = ConstructorParameters<typeof Bonjour>[0] & {
 interface Advertiser {
   bonjour: Bonjour
   service: Service | null
+  browser: ReturnType<Bonjour['find']> | null
 }
+
+/**
+ * How often to ask the network again. The browser queries once when it starts and otherwise
+ * waits for announcements, so a single lost packet — or one query the OS blocked while it was
+ * still deciding on Local Network access — left a device invisible until someone restarted.
+ */
+const REQUERY_MS = 30_000
+
+let requery: NodeJS.Timeout | null = null
 
 const advertisers: Advertiser[] = []
 const peers = new Map<string, DiscoveredPeer>()
@@ -126,7 +136,7 @@ export async function startDiscovery(port: number): Promise<void> {
       console.warn(`[discovery] ${address ?? 'default'}:`, error)
     )
 
-    const advertiser: Advertiser = { bonjour, service: null }
+    const advertiser: Advertiser = { bonjour, service: null, browser: null }
 
     try {
       advertiser.service = bonjour.publish({
@@ -139,6 +149,7 @@ export async function startDiscovery(port: number): Promise<void> {
       })
 
       const browser = bonjour.find({ type: SERVICE_TYPE, protocol: 'tcp' })
+      advertiser.browser = browser
       browser.on('up', absorb)
       browser.on('down', forget)
       browser.on('txt-update', absorb)
@@ -148,6 +159,16 @@ export async function startDiscovery(port: number): Promise<void> {
     }
 
     advertisers.push(advertiser)
+  }
+
+  requery = setInterval(refreshDiscovery, REQUERY_MS)
+}
+
+/** Ask again who is out there, and drop whoever has stopped answering. */
+export function refreshDiscovery(): void {
+  for (const { browser } of advertisers) {
+    browser?.expire()
+    browser?.update()
   }
 }
 
@@ -160,6 +181,9 @@ export function refreshPairedFlags(): void {
 }
 
 export async function stopDiscovery(): Promise<void> {
+  if (requery) clearInterval(requery)
+  requery = null
+
   await Promise.all(
     advertisers.map(
       (advertiser) =>

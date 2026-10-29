@@ -1,6 +1,9 @@
 import { BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
 
+import { EVENTS, type Shortcut } from '@shared/ipc'
+
+import { refreshDiscovery } from './discovery'
 import { checkOnWindowShown } from './updater'
 
 let mainWindow: BrowserWindow | null = null
@@ -101,6 +104,20 @@ function create(): BrowserWindow {
   nativeTheme.on('updated', followTheme)
   win.on('closed', () => nativeTheme.off('updated', followTheme))
 
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    const accel = input.meta || input.control
+    const key = input.key.toLowerCase()
+
+    let shortcut: Shortcut | null = null
+    if (key === 'f5' || (accel && !input.shift && key === 'r')) shortcut = 'refresh'
+    else if (accel && !input.shift && key === 'a') shortcut = 'select-all'
+    if (!shortcut) return
+
+    event.preventDefault()
+    win.webContents.send(EVENTS.shortcut, shortcut)
+  })
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url)
     return { action: 'deny' }
@@ -122,6 +139,8 @@ export function showWindow(): void {
   mainWindow.show()
   mainWindow.focus()
   checkOnWindowShown()
+  // Opening the window is when someone looks for devices, so that is when to look again.
+  refreshDiscovery()
 }
 
 export function toggleWindow(): void {

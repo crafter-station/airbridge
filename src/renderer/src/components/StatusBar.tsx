@@ -1,5 +1,6 @@
 import { formatBytes } from '../format'
 import { useTransfers, useUpdate } from '../queries'
+import { useUi } from '../store'
 
 /** Version and update state, at the far end of the strip where it stays out of the way. */
 function UpdateStatus(): React.JSX.Element | null {
@@ -54,6 +55,8 @@ export function StatusBar({ itemCount }: { itemCount: number | null }): React.JS
   const { data: jobs = [] } = useTransfers()
   const active = jobs.filter((job) => job.status === 'scanning' || job.status === 'transferring')
   const failed = jobs.filter((job) => job.status === 'failed')
+  const notice = useUi((state) => state.notice)
+  const setNotice = useUi((state) => state.setNotice)
 
   const totalBytes = active.reduce((sum, job) => sum + job.totalBytes, 0)
   const doneBytes = active.reduce((sum, job) => sum + job.transferredBytes, 0)
@@ -89,7 +92,20 @@ export function StatusBar({ itemCount }: { itemCount: number | null }): React.JS
         </div>
       )}
 
-      {active.length === 0 && failed.length > 0 && (
+      {active.length === 0 && notice && (
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="truncate text-(--color-danger)">{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="shrink-0 rounded px-1.5 py-0.5 hover:bg-(--color-hover)"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {active.length === 0 && !notice && failed.length > 0 && (
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="truncate text-(--color-danger)">{failed[failed.length - 1].error}</span>
           <button

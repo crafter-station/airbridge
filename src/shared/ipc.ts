@@ -15,12 +15,15 @@ export const IPC = {
   devicesPair: 'devices:pair',
   devicesUnpair: 'devices:unpair',
   devicesMenu: 'devices:menu',
+  devicesRefresh: 'devices:refresh',
 
   peerShares: 'peer:shares',
   peerList: 'peer:list',
+  peerMove: 'peer:move',
 
   localList: 'local:list',
   localPlaces: 'local:places',
+  localMove: 'local:move',
 
   transfersList: 'transfers:list',
   transfersCopy: 'transfers:copy',
@@ -41,7 +44,13 @@ export const EVENTS = {
   transfers: 'event:transfers',
   /** Something changed on a peer; the renderer re-reads what it is showing. */
   peer: 'event:peer',
-  update: 'event:update'
+  update: 'event:update',
+  /** A key the main process intercepted before the default menu could act on it. */
+  shortcut: 'event:shortcut'
 } as const
+
+/** Intercepted in the main process: the default menu would otherwise reload the whole page on
+ *  ⌘R and select the page's text on ⌘A. */
+export type Shortcut = 'refresh' | 'select-all'
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

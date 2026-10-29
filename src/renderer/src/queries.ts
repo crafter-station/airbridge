@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 
 import type {
   DirEntry,
@@ -61,6 +61,24 @@ export function useUpdate(): UseQueryResult<UpdateState> {
   )
 
   return useQuery({ queryKey: ['update'], queryFn: () => window.airbridge.update.state() })
+}
+
+/**
+ * Re-read everything on screen and ask the network again who is out there.
+ *
+ * Listings normally follow pushed change events, but those depend on a file watcher and a
+ * socket to the peer, and either can miss something — a folder made in Finder on a network
+ * drive, a peer that was briefly unreachable. This is the "make it right now" button.
+ */
+export function useRefresh(): () => void {
+  const client = useQueryClient()
+
+  return useCallback(() => {
+    void window.airbridge.devices.refresh()
+    for (const key of ['peer-dir', 'local-dir', 'peer-shares', 'shares', 'devices']) {
+      void client.invalidateQueries({ queryKey: [key] })
+    }
+  }, [client])
 }
 
 export function useServerStatus(): UseQueryResult<ServerStatus> {

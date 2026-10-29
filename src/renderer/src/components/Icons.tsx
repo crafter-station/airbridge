@@ -61,6 +61,20 @@ export function ChevronIcon({ className }: IconProps): React.JSX.Element {
   )
 }
 
+export function RefreshIcon({ className }: IconProps): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
+      <path
+        d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4.2h-4.2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 export function ListViewIcon({ className }: IconProps): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>

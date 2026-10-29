@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 
-import { EVENTS, IPC } from '@shared/ipc'
+import { EVENTS, IPC, type Shortcut } from '@shared/ipc'
 import type {
   AppInfo,
   DirEntry,
@@ -34,6 +34,8 @@ function subscribe<T>(channel: string) {
 const api = {
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(IPC.getAppInfo),
 
+  onShortcut: subscribe<Shortcut>(EVENTS.shortcut),
+
   serverStatus: (): Promise<ServerStatus> => ipcRenderer.invoke(IPC.serverStatus),
 
   shares: {
@@ -54,6 +56,8 @@ const api = {
       ipcRenderer.invoke(IPC.devicesUnpair, deviceId),
     menu: (deviceId: string, deviceName: string): Promise<void> =>
       ipcRenderer.invoke(IPC.devicesMenu, deviceId, deviceName),
+    /** Ask the network again who is out there. Results arrive through `onChanged`. */
+    refresh: (): Promise<KnownDevice[]> => ipcRenderer.invoke(IPC.devicesRefresh),
     onChanged: subscribe<KnownDevice[]>(EVENTS.devices)
   },
 
@@ -61,12 +65,16 @@ const api = {
     shares: (deviceId: string): Promise<PeerShares> => ipcRenderer.invoke(IPC.peerShares, deviceId),
     list: (deviceId: string, shareId: string, path: string): Promise<DirEntry[]> =>
       ipcRenderer.invoke(IPC.peerList, deviceId, shareId, path),
+    move: (deviceId: string, shareId: string, paths: string[], destination: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.peerMove, deviceId, shareId, paths, destination),
     onChanged: subscribe<PeerEvent>(EVENTS.peer)
   },
 
   local: {
     list: (path: string): Promise<LocalListing> => ipcRenderer.invoke(IPC.localList, path),
-    places: (): Promise<LocalPlace[]> => ipcRenderer.invoke(IPC.localPlaces)
+    places: (): Promise<LocalPlace[]> => ipcRenderer.invoke(IPC.localPlaces),
+    move: (paths: string[], destination: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.localMove, paths, destination)
   },
 
   transfers: {

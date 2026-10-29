@@ -10,6 +10,7 @@ import type { DirEntry, PairRequest, ShareEvent } from '@shared/types'
 import { getCertificate } from './cert'
 import { getDeviceId, getDeviceName } from './identity'
 import { isRealPathInside, resolveInside } from './paths'
+import { moveInto } from './move'
 import { PART_SUFFIX } from './peer'
 import { handlePairRequest, PairingError } from './pairing'
 import { getShare, listPublicShares } from './shares'
@@ -282,6 +283,40 @@ function buildServer(certificate: { key: string; cert: string }): FastifyInstanc
         }
 
         return reply.code(201).send({ path: request.query.path ?? '', bytes: (await stat(located.target)).size })
+      }
+    )
+
+    /**
+     * Move entries into another folder of the same share. Both ends go through `locate`, so
+     * neither can be outside the share, and the share has to be writable.
+     */
+    authenticated.post<{ Params: ShareParams; Body: { paths?: string[]; to?: string } }>(
+      '/shares/:id/move',
+      async (request, reply) => {
+        const paths = request.body?.paths ?? []
+        const destination = locate(request.params.id, request.body?.to, { forWriting: true })
+        if (!destination.ok) {
+          return reply.code(destination.status).send({ error: destination.error })
+        }
+
+        const stats = await stat(destination.target).catch(() => null)
+        if (!stats?.isDirectory()) return reply.code(404).send({ error: 'Not a folder' })
+
+        for (const path of paths) {
+          const source = locate(request.params.id, path, { forWriting: true })
+          if (!source.ok) return reply.code(source.status).send({ error: source.error })
+          if (source.target === source.root) {
+            return reply.code(403).send({ error: 'Cannot move the share itself' })
+          }
+
+          try {
+            await moveInto(source.target, destination.target)
+          } catch (cause) {
+            return reply.code(409).send({ error: (cause as Error).message })
+          }
+        }
+
+        return reply.code(204).send()
       }
     )
 

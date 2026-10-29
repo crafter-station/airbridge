@@ -499,6 +499,47 @@ try {
   })
   check('deletes a file', remove.status === 204, remove.status)
   check('and it is gone', !existsSync(join(dropbox, 'uploaded.bin')))
+
+  // --- Moving ---
+
+  const move = (share, body) =>
+    call(`/shares/${share}/move`, { token, identity, method: 'POST', body })
+
+  await call(`/shares/${writableShareId}/file?path=${encodeURIComponent('one.txt')}`, {
+    token, identity, method: 'PUT', raw: Buffer.from('1')
+  })
+  await call(`/shares/${writableShareId}/file?path=${encodeURIComponent('two.txt')}`, {
+    token, identity, method: 'PUT', raw: Buffer.from('2')
+  })
+
+  const moved = await move(writableShareId, { paths: ['one.txt', 'two.txt'], to: 'a' })
+  check('moves several items into a folder', moved.status === 204, moved.status)
+  check(
+    'and they arrive with their names',
+    existsSync(join(dropbox, 'a', 'one.txt')) && existsSync(join(dropbox, 'a', 'two.txt'))
+  )
+  check('and leave where they were', !existsSync(join(dropbox, 'one.txt')))
+
+  const intoItself = await move(writableShareId, { paths: ['a'], to: 'a/b' })
+  check('refuses to move a folder into itself', intoItself.status === 409, intoItself.status)
+  check('and the folder stays put', existsSync(join(dropbox, 'a', 'b', 'deep.txt')))
+
+  await call(`/shares/${writableShareId}/file?path=${encodeURIComponent('one.txt')}`, {
+    token, identity, method: 'PUT', raw: Buffer.from('clash')
+  })
+  const clash = await move(writableShareId, { paths: ['one.txt'], to: 'a' })
+  check('refuses to overwrite on a move', clash.status === 409, clash.status)
+  check(
+    'and both copies survive',
+    readFileSync(join(dropbox, 'one.txt'), 'utf8') === 'clash' &&
+      readFileSync(join(dropbox, 'a', 'one.txt'), 'utf8') === '1'
+  )
+
+  const escapingMove = await move(writableShareId, { paths: ['one.txt'], to: '..' })
+  check('refuses a move out of the share', escapingMove.status === 403, escapingMove.status)
+
+  const readOnlyMove = await move(shareId, { paths: ['hello.txt'], to: '' })
+  check('refuses to move inside a read-only share', readOnlyMove.status === 403, readOnlyMove.status)
 } finally {
   child.kill()
   await once(child, 'exit').catch(() => {})

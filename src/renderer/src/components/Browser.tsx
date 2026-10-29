@@ -1,12 +1,13 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
 import type { DirEntry, PublicShare } from '@shared/types'
+import { activeDrag, beginDrag, droppedDrag, isWithinDragged, type Drag } from '../drag'
 import { joinRemote } from '../format'
 import { useDevices, useLocalDirectory, usePeerDirectory, usePeerShares } from '../queries'
-import { useUi } from '../store'
+import { reporting, useUi } from '../store'
 import { EmptyState } from './EmptyState'
 import { IconView, ListView } from './FileViews'
-import { DRAG_MIME, LOCAL_DRAG_MIME, type LocalDrag, type RemoteDrag } from './LocalPane'
 import { useQuickLook } from './Preview'
 
 /** The main pane. Which of the three things it is showing depends only on the location. */
@@ -256,23 +257,28 @@ function RemoteBrowser({
 
   const share = shares.find((candidate) => candidate.id === shareId)
 
+  const client = useQueryClient()
+  const refetchShare = (): Promise<void> =>
+    client.invalidateQueries({ queryKey: ['peer-dir', deviceId, shareId] })
+
   const startDrag = (names: string[], event: React.DragEvent): void => {
     const dragged = (entries ?? []).filter((entry) => names.includes(entry.name))
 
-    const payload: RemoteDrag = {
-      deviceId,
-      shareId,
-      shareName: share?.name ?? 'Share',
-      items: dragged.map((entry) => ({
-        name: entry.name,
-        kind: entry.kind,
-        path: joinRemote(path, entry.name),
-        size: entry.size
-      }))
-    }
-
-    event.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload))
-    event.dataTransfer.effectAllowed = 'copy'
+    beginDrag(
+      {
+        kind: 'remote',
+        deviceId,
+        shareId,
+        shareName: share?.name ?? 'Share',
+        items: dragged.map((entry) => ({
+          name: entry.name,
+          kind: entry.kind,
+          path: joinRemote(path, entry.name),
+          size: entry.size
+        }))
+      },
+      event
+    )
 
     // The destination has to be on screen to be dropped on. Opening it as the drag starts is
     // what makes "just drag it over" work without a separate step.
@@ -290,20 +296,34 @@ function RemoteBrowser({
     openPreview({ kind: 'remote', deviceId, shareId, directory: path }, entries ?? [], entry.name)
   }
 
-  /** Dropping local files here uploads them, but only into a share marked writable. */
-  const receive = async (event: React.DragEvent): Promise<void> => {
-    const raw = event.dataTransfer.getData(LOCAL_DRAG_MIME)
-    if (!raw || !share?.writable) return
-
-    const drag = JSON.parse(raw) as LocalDrag
-    await window.airbridge.transfers.upload(
-      deviceId,
-      shareId,
-      share.name,
-      drag.paths,
-      path
+  /** Whether a drag can land in `directory` of this share: local files upload, and items from
+   *  this same share move. Either way the share has to accept writes. */
+  const accepts = (drag: Drag | null, directory: string): boolean => {
+    if (!drag || !share?.writable) return false
+    if (drag.kind === 'local') return true
+    const paths = drag.items.map((item) => item.path)
+    return (
+      drag.deviceId === deviceId && drag.shareId === shareId && !isWithinDragged(directory, paths)
     )
   }
+
+  const dropInto = (drag: Drag | null, directory: string): Promise<void> =>
+    reporting(async () => {
+      if (!drag || !share || !accepts(drag, directory)) return
+
+      if (drag.kind === 'local') {
+        await window.airbridge.transfers.upload(deviceId, shareId, share.name, drag.paths, directory)
+        return
+      }
+
+      await window.airbridge.peer.move(
+        deviceId,
+        shareId,
+        drag.items.map((item) => item.path),
+        directory
+      )
+      await refetchShare()
+    })
 
   const body = (): React.JSX.Element => {
     if (isLoading) return <EmptyState title="Loading…" />
@@ -324,10 +344,15 @@ function RemoteBrowser({
       )
     }
 
-    return viewMode === 'list' ? (
-      <ListView entries={entries} onOpen={open} onDragEntries={startDrag} />
-    ) : (
-      <IconView entries={entries} onOpen={open} onDragEntries={startDrag} />
+    const View = viewMode === 'list' ? ListView : IconView
+    return (
+      <View
+        entries={entries}
+        onOpen={open}
+        onDragEntries={startDrag}
+        canDropOn={(folder) => accepts(activeDrag(), joinRemote(path, folder.name))}
+        onDropOn={(folder, event) => void dropInto(droppedDrag(event), joinRemote(path, folder.name))}
+      />
     )
   }
 
@@ -337,9 +362,9 @@ function RemoteBrowser({
         receiving ? 'bg-(--color-accent)/10 ring-2 ring-(--color-accent) ring-inset' : ''
       }`}
       onDragOver={(event) => {
-        // Only claim the drop when it is local files and the share will accept them —
-        // otherwise a read-only share would light up and then silently do nothing.
-        if (!share?.writable || !event.dataTransfer.types.includes(LOCAL_DRAG_MIME)) return
+        // Only local files land on the folder as a whole; a read-only share must not light
+        // up and then silently do nothing. Moves need a folder row to aim at.
+        if (activeDrag()?.kind !== 'local' || !accepts(activeDrag(), path)) return
         event.preventDefault()
         setReceiving(true)
       }}
@@ -347,7 +372,8 @@ function RemoteBrowser({
       onDrop={(event) => {
         event.preventDefault()
         setReceiving(false)
-        void receive(event)
+        const drag = droppedDrag(event)
+        if (drag?.kind === 'local') void dropInto(drag, path)
       }}
     >
       {body()}
@@ -367,6 +393,8 @@ function LocalBrowser({
   const navigate = useUi((state) => state.navigate)
   const viewMode = useUi((state) => state.viewMode)
   const openPreview = useUi((state) => state.openPreview)
+  const setPaneOpen = useUi((state) => state.setPaneOpen)
+  const client = useQueryClient()
 
   useQuickLook(
     useMemo(() => ({ kind: 'local' as const, directory: path }), [path]),
@@ -398,9 +426,38 @@ function LocalBrowser({
     openPreview({ kind: 'local', directory: path }, listing?.entries ?? [], entry.name)
   }
 
-  return viewMode === 'list' ? (
-    <ListView entries={listing.entries} onOpen={open} />
-  ) : (
-    <IconView entries={listing.entries} onOpen={open} />
+  const pathOf = (name: string): string => `${path}/${name}`
+
+  /** Our own files move; files from another machine are copied down into the folder. */
+  const accepts = (drag: Drag | null, directory: string): boolean =>
+    drag?.kind === 'remote' || (drag?.kind === 'local' && !isWithinDragged(directory, drag.paths))
+
+  const dropInto = (drag: Drag | null, directory: string): Promise<void> =>
+    reporting(async () => {
+      if (!drag || !accepts(drag, directory)) return
+
+      if (drag.kind === 'remote') {
+        const { deviceId, shareId, shareName, items } = drag
+        await window.airbridge.transfers.copy(deviceId, shareId, shareName, items, directory)
+        return
+      }
+
+      await window.airbridge.local.move(drag.paths, directory)
+      await client.invalidateQueries({ queryKey: ['local-dir'] })
+    })
+
+  const View = viewMode === 'list' ? ListView : IconView
+  return (
+    <View
+      entries={listing.entries}
+      onOpen={open}
+      onDragEntries={(names, event) => {
+        beginDrag({ kind: 'local', paths: names.map(pathOf) }, event)
+        // Somewhere to drop them: a share on another device, or the local pane.
+        setPaneOpen(true)
+      }}
+      canDropOn={(folder) => accepts(activeDrag(), pathOf(folder.name))}
+      onDropOn={(folder, event) => void dropInto(droppedDrag(event), pathOf(folder.name))}
+    />
   )
 }

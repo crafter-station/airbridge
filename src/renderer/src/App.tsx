@@ -5,7 +5,7 @@ import { Browser } from './components/Browser'
 import { LocalPane } from './components/LocalPane'
 import { Preview } from './components/Preview'
 import { Sidebar } from './components/Sidebar'
-import { useLocalRefresh, usePeerEvents } from './queries'
+import { useLocalRefresh, usePeerEvents, useRefresh } from './queries'
 import { StatusBar } from './components/StatusBar'
 import { Toolbar } from './components/Toolbar'
 import { useUi } from './store'
@@ -31,6 +31,7 @@ function Shell(): React.JSX.Element {
   const [itemCount, setItemCount] = useState<number | null>(null)
 
   useKeyboardShortcuts()
+  useRefreshTriggers()
   usePeerEvents()
   useLocalRefresh()
 
@@ -52,6 +53,40 @@ function Shell(): React.JSX.Element {
       <Preview />
     </div>
   )
+}
+
+/** Too soon after the last one and a refresh only adds load: focus fires on every dialog. */
+const FOCUS_REFRESH_GAP_MS = 3000
+
+/** ⌘R / F5, ⌘A, and coming back to the window — when someone has likely changed something
+ *  elsewhere (made a folder in Finder) and expects to see it here. */
+function useRefreshTriggers(): void {
+  const refresh = useRefresh()
+  const selectAll = useUi((state) => state.selectAll)
+
+  useEffect(
+    () =>
+      window.airbridge.onShortcut((shortcut) => {
+        if (shortcut === 'refresh') return refresh()
+
+        // A text field keeps its own select-all; everywhere else it means the items.
+        const focused = document.activeElement
+        if (focused instanceof HTMLInputElement) focused.select()
+        else selectAll()
+      }),
+    [refresh, selectAll]
+  )
+
+  useEffect(() => {
+    let last = 0
+    const onFocus = (): void => {
+      if (Date.now() - last < FOCUS_REFRESH_GAP_MS) return
+      last = Date.now()
+      refresh()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refresh])
 }
 
 function useKeyboardShortcuts(): void {

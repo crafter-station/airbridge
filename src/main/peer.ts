@@ -362,6 +362,37 @@ export async function uploadFile(
   return { bytes: size }
 }
 
+/** Move entries into another folder of the same writable share. */
+export async function movePeerEntries(
+  peer: PeerAddress,
+  shareId: string,
+  paths: string[],
+  destination: string
+): Promise<void> {
+  const response = await peerRequest(peer, {
+    method: 'POST',
+    path: `/shares/${encodeURIComponent(shareId)}/move`,
+    body: { paths, to: destination }
+  })
+
+  const text = await readBody(response)
+  if (response.status < 400) return
+
+  // Fastify's own 404 names the route: that is a peer from before moving existed, not a
+  // missing file.
+  if (response.status === 404 && text.includes('Route POST')) {
+    throw new Error('The other computer needs a newer airbridge to move files there')
+  }
+
+  let message = text
+  try {
+    message = (JSON.parse(text) as { error?: string }).error ?? text
+  } catch {
+    // Not JSON; the raw text is the best there is.
+  }
+  throw new Error(message)
+}
+
 export async function deleteRemote(
   peer: PeerAddress,
   shareId: string,
